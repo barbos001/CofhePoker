@@ -127,31 +127,52 @@ export const useCofhe = () => {
 
   /**
    * Ensure an active self-permit exists for the current account.
-   * Updates the global permit status in the store.
-   * Returns the permit object (needed to pass to withPermit).
+   * Uses a lock to prevent duplicate signing popups.
    */
+  const permitLockRef = useRef<Promise<CofhePermit> | null>(null);
+
   const ensurePermit = useCallback(async (): Promise<CofhePermit> => {
     if (!clientRef.current) throw new Error('CoFHE not initialised');
+
+    // Already signing — return the same promise (prevents duplicate popups)
+    if (permitLockRef.current) {
+      FHE('Permit already in progress — waiting…');
+      return permitLockRef.current;
+    }
+
+    // Already active — return existing permit without popup
+    const { permitStatus: currentStatus } = useGameStore.getState();
+    if (currentStatus === 'active') {
+      try {
+        const existing = await clientRef.current.permits.getOrCreateSelfPermit();
+        if (existing) return existing;
+      } catch { /* fall through to re-sign */ }
+    }
 
     setPermitStatus('signing');
     setPermitError(null);
 
-    try {
-      FHE('Requesting EIP-712 self-permit…');
-      const t0 = performance.now();
-      // getOrCreateSelfPermit() reads chainId/account from connected state,
-      // creates a permit if needed, and stores it as the active permit.
-      const permit = await clientRef.current.permits.getOrCreateSelfPermit();
-      FHE(`Permit active ✓ (${(performance.now() - t0).toFixed(0)}ms)`);
-      setPermitStatus('active');
-      return permit;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Permit signing failed';
-      FHE('Permit FAILED:', msg);
-      setPermitStatus('error');
-      setPermitError(msg);
-      throw err;
-    }
+    const promise = (async () => {
+      try {
+        FHE('Requesting EIP-712 self-permit…');
+        const t0 = performance.now();
+        const permit = await clientRef.current!.permits.getOrCreateSelfPermit();
+        FHE(`Permit active ✓ (${(performance.now() - t0).toFixed(0)}ms)`);
+        setPermitStatus('active');
+        return permit;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Permit signing failed';
+        FHE('Permit FAILED:', msg);
+        setPermitStatus('error');
+        setPermitError(msg);
+        throw err;
+      } finally {
+        permitLockRef.current = null;
+      }
+    })();
+
+    permitLockRef.current = promise;
+    return promise;
   }, [setPermitStatus, setPermitError]);
 
   /**
