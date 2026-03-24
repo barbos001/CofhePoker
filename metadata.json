@@ -1,0 +1,12 @@
+{
+  "name": "CipherPoker",
+  "description": "FHE-encrypted 3-card poker on Fhenix. Cards are invisible to everyone — even the blockchain. Provably fair, zero trust, zero servers.",
+  "categories": ["Encrypted Gaming"],
+  "technologies": ["Fhenix CoFHE", "FHE", "Solidity", "React", "wagmi", "viem"],
+  "network": "Ethereum Sepolia",
+  "contract": "0x_DEPLOYED_ADDRESS",
+  "live_url": "https://cipherpoker.vercel.app",
+  "github": "https://github.com/YOUR_USERNAME/cipherpoker",
+  "demo_video": "https://youtu.be/YOUR_VIDEO",
+  "requestFramePermissions": []
+}

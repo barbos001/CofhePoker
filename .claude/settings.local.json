@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find c:/Users/Leonid/Downloads/poker/node_modules/@fhenixprotocol/cofhe-contracts -name *.sol)",
+      "Bash(TS_NODE_PROJECT=tsconfig.hardhat.json npx hardhat run scripts/deploy.cts --network eth-sepolia)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\(''''exports'''',{}\\), indent=2\\)\\)\")",
+      "Bash(grep -n FheTypess*= c:/Users/Leonid/Downloads/poker/node_modules/@cofhe/sdk/dist/chunk-MXND5SVN.js)",
+      "Bash(grep -n FheTypes2[ c:/Users/Leonid/Downloads/poker/node_modules/@cofhe/sdk/dist/chunk-MXND5SVN.js)",
+      "Bash(npx tsc:*)",
+      "Bash(grep -n export.*FheTypes c:/Users/Leonid/Downloads/poker/node_modules/@cofhe/sdk/dist/core.js)",
+      "Bash(npx vite:*)",
+      "Bash(find /c/Users/Leonid/Downloads/poker -name *.svg -o -name *.png -o -name *.jpg)",
+      "Bash(find /c/Users/Leonid/Downloads/poker -name tailwind.config.* -o -name *.config.js -o -name *.config.mjs)",
+      "Bash(find /c/Users/Leonid/Downloads/poker -maxdepth 4 -type d ! -path */node_modules/* ! -path */.git/* ! -path */dist/*)",
+      "Bash(grep -r \"logo\\\\|icon\\\\|image\\\\|favicon\" /c/Users/Leonid/Downloads/poker/src --include=*.tsx --include=*.ts)"
+    ]
+  }
+}
