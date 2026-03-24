@@ -4,10 +4,10 @@ import { loadFixture } from "@nomicfoundation/hardhat-network-helpers";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-async function deployCipherPokerFixture() {
+async function deployCofhePokerFixture() {
   const [owner, alice, bob] = await hre.ethers.getSigners();
-  const CipherPoker = await hre.ethers.getContractFactory("CipherPoker");
-  const poker = await CipherPoker.deploy();
+  const CofhePoker = await hre.ethers.getContractFactory("CofhePoker");
+  const poker = await CofhePoker.deploy();
   await poker.waitForDeployment();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return { poker: poker as any, owner, alice, bob };
@@ -15,18 +15,18 @@ async function deployCipherPokerFixture() {
 
 // ── Tests ─────────────────────────────────────────────────────────────
 
-describe("CipherPoker", function () {
+describe("CofhePoker", function () {
 
   // ── Deployment ──────────────────────────────────────────────────────
 
   describe("Deployment", function () {
     it("should deploy successfully", async function () {
-      const { poker } = await loadFixture(deployCipherPokerFixture);
+      const { poker } = await loadFixture(deployCofhePokerFixture);
       expect(await poker.getAddress()).to.not.equal(hre.ethers.ZeroAddress);
     });
 
     it("should set correct constants", async function () {
-      const { poker } = await loadFixture(deployCipherPokerFixture);
+      const { poker } = await loadFixture(deployCofhePokerFixture);
       expect(await poker.ANTE()).to.equal(10n);
       expect(await poker.INITIAL_BALANCE()).to.equal(1000n);
     });
@@ -36,7 +36,7 @@ describe("CipherPoker", function () {
 
   describe("createTable", function () {
     it("creates a table and initialises balance", async function () {
-      const { poker, alice } = await loadFixture(deployCipherPokerFixture);
+      const { poker, alice } = await loadFixture(deployCofhePokerFixture);
       await expect(poker.connect(alice).createTable())
         .to.emit(poker, "TableCreated");
 
@@ -48,7 +48,7 @@ describe("CipherPoker", function () {
     });
 
     it("does not reset balance on second table creation (after complete)", async function () {
-      const { poker, alice } = await loadFixture(deployCipherPokerFixture);
+      const { poker, alice } = await loadFixture(deployCofhePokerFixture);
       await poker.connect(alice).createTable();
       // First hand: start + fold to complete the hand quickly
       const tableId = await poker.connect(alice).getMyTableId();
@@ -62,7 +62,7 @@ describe("CipherPoker", function () {
     });
 
     it("emits TableCreated with correct args", async function () {
-      const { poker, bob } = await loadFixture(deployCipherPokerFixture);
+      const { poker, bob } = await loadFixture(deployCofhePokerFixture);
       const tx = await poker.connect(bob).createTable();
       const receipt = await tx.wait();
       expect(receipt?.status).to.equal(1);
@@ -73,7 +73,7 @@ describe("CipherPoker", function () {
 
   describe("startHand", function () {
     it("deducts ante and sets PLAYER_TURN state", async function () {
-      const { poker, alice } = await loadFixture(deployCipherPokerFixture);
+      const { poker, alice } = await loadFixture(deployCofhePokerFixture);
       await poker.connect(alice).createTable();
       const tableId = await poker.connect(alice).getMyTableId();
 
@@ -90,7 +90,7 @@ describe("CipherPoker", function () {
     });
 
     it("reverts if called by non-player", async function () {
-      const { poker, alice, bob } = await loadFixture(deployCipherPokerFixture);
+      const { poker, alice, bob } = await loadFixture(deployCofhePokerFixture);
       await poker.connect(alice).createTable();
       const tableId = await poker.connect(alice).getMyTableId();
       await expect(poker.connect(bob).startHand(tableId))
@@ -98,7 +98,7 @@ describe("CipherPoker", function () {
     });
 
     it("reverts when balance insufficient", async function () {
-      const { poker, alice } = await loadFixture(deployCipherPokerFixture);
+      const { poker, alice } = await loadFixture(deployCofhePokerFixture);
       await poker.connect(alice).createTable();
       const tableId = await poker.connect(alice).getMyTableId();
       // Drain balance via folding many hands
@@ -119,7 +119,7 @@ describe("CipherPoker", function () {
 
   describe("fold", function () {
     it("player fold sets COMPLETE and bot as winner", async function () {
-      const { poker, alice } = await loadFixture(deployCipherPokerFixture);
+      const { poker, alice } = await loadFixture(deployCofhePokerFixture);
       await poker.connect(alice).createTable();
       const tableId = await poker.connect(alice).getMyTableId();
       await poker.connect(alice).startHand(tableId);
@@ -136,7 +136,7 @@ describe("CipherPoker", function () {
     });
 
     it("reverts if not PLAYER_TURN", async function () {
-      const { poker, alice } = await loadFixture(deployCipherPokerFixture);
+      const { poker, alice } = await loadFixture(deployCofhePokerFixture);
       await poker.connect(alice).createTable();
       const tableId = await poker.connect(alice).getMyTableId();
       await expect(poker.connect(alice).fold(tableId))
@@ -148,7 +148,7 @@ describe("CipherPoker", function () {
 
   describe("play", function () {
     it("deducts play bet and emits PlayerAction", async function () {
-      const { poker, alice } = await loadFixture(deployCipherPokerFixture);
+      const { poker, alice } = await loadFixture(deployCofhePokerFixture);
       await poker.connect(alice).createTable();
       const tableId = await poker.connect(alice).getMyTableId();
       await poker.connect(alice).startHand(tableId);
@@ -165,7 +165,7 @@ describe("CipherPoker", function () {
     });
 
     it("reverts if already played or folded", async function () {
-      const { poker, alice } = await loadFixture(deployCipherPokerFixture);
+      const { poker, alice } = await loadFixture(deployCofhePokerFixture);
       await poker.connect(alice).createTable();
       const tableId = await poker.connect(alice).getMyTableId();
       await poker.connect(alice).startHand(tableId);
@@ -179,7 +179,7 @@ describe("CipherPoker", function () {
 
   describe("getMyCards", function () {
     it("returns three non-zero ctHashes after deal", async function () {
-      const { poker, alice } = await loadFixture(deployCipherPokerFixture);
+      const { poker, alice } = await loadFixture(deployCofhePokerFixture);
       await poker.connect(alice).createTable();
       const tableId = await poker.connect(alice).getMyTableId();
       await poker.connect(alice).startHand(tableId);
@@ -191,7 +191,7 @@ describe("CipherPoker", function () {
     });
 
     it("reverts for non-player", async function () {
-      const { poker, alice, bob } = await loadFixture(deployCipherPokerFixture);
+      const { poker, alice, bob } = await loadFixture(deployCofhePokerFixture);
       await poker.connect(alice).createTable();
       const tableId = await poker.connect(alice).getMyTableId();
       await poker.connect(alice).startHand(tableId);
@@ -204,7 +204,7 @@ describe("CipherPoker", function () {
 
   describe("balances", function () {
     it("getBalance returns correct chip count", async function () {
-      const { poker, alice } = await loadFixture(deployCipherPokerFixture);
+      const { poker, alice } = await loadFixture(deployCofhePokerFixture);
       await poker.connect(alice).createTable();
       const tableId = await poker.connect(alice).getMyTableId();
       await poker.connect(alice).startHand(tableId);
@@ -220,7 +220,7 @@ describe("CipherPoker", function () {
 
   describe("Multiple hands", function () {
     it("can play 3 hands in a row via fold", async function () {
-      const { poker, alice } = await loadFixture(deployCipherPokerFixture);
+      const { poker, alice } = await loadFixture(deployCofhePokerFixture);
       await poker.connect(alice).createTable();
       const tableId = await poker.connect(alice).getMyTableId();
 

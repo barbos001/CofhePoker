@@ -3,11 +3,11 @@ pragma solidity ^0.8.25;
 
 import "@fhenixprotocol/cofhe-contracts/FHE.sol";
 
-/// @title CipherPoker
+/// @title CofhePoker
 /// @notice 3-card poker game where all card values are FHE-encrypted.
 ///         Nobody — not validators, not the opponent, not the contract itself —
 ///         can see a player's cards. Only the player can decrypt via a wallet permit.
-contract CipherPoker {
+contract CofhePoker {
 
     // ────────────────────────────────────────────────────────────────
     //  State types

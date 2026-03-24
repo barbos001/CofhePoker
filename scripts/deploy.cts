@@ -4,18 +4,18 @@ import path from "path";
 
 async function main() {
   const network = hre.network.name;
-  console.log(`\nDeploying CipherPoker to ${network}...`);
+  console.log(`\nDeploying CofhePoker to ${network}...`);
 
   const [deployer] = await hre.ethers.getSigners();
   console.log(`Deployer: ${deployer.address}`);
   console.log(`Balance:  ${hre.ethers.formatEther(await hre.ethers.provider.getBalance(deployer.address))} ETH\n`);
 
-  const CipherPoker = await hre.ethers.getContractFactory("CipherPoker");
-  const poker = await CipherPoker.deploy();
+  const CofhePoker = await hre.ethers.getContractFactory("CofhePoker");
+  const poker = await CofhePoker.deploy();
   await poker.waitForDeployment();
 
   const address = await poker.getAddress();
-  console.log(`✅  CipherPoker deployed at: ${address}`);
+  console.log(`✅  CofhePoker deployed at: ${address}`);
 
   // ── Save deployment info ──────────────────────────────────────────
   const deploymentDir  = path.join(__dirname, "..", "deployments");
@@ -25,7 +25,7 @@ async function main() {
   if (!fs.existsSync(deploymentDir)) fs.mkdirSync(deploymentDir, { recursive: true });
 
   const deployment = {
-    CipherPoker: address,
+    CofhePoker: address,
     chainId:     (await hre.ethers.provider.getNetwork()).chainId.toString(),
     deployer:    deployer.address,
     timestamp:   new Date().toISOString(),

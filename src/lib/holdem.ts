@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════════════════
 //  Texas Hold'em Engine — 5-card hand evaluation (display utility)
 //  Card ID layout: 0–51  →  rank = floor(id/4)+2, suit = id%4
-//  Mirrors on-chain FHE CipherHoldem._evalHand5()
+//  Mirrors on-chain FHE CofheHoldem._evalHand5()
 // ═══════════════════════════════════════════════════════════════════════
 
 import { type HandEvaluation, getCardData } from './poker';

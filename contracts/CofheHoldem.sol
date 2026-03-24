@@ -3,14 +3,14 @@ pragma solidity ^0.8.25;
 
 import "@fhenixprotocol/cofhe-contracts/FHE.sol";
 
-/// @title CipherHoldem
+/// @title CofheHoldem
 /// @notice Texas Hold'em FHE poker: 2 hole + 5 community, 4 betting rounds,
 ///         check/bet/call/fold, best-5-of-7 showdown.
 ///
 ///  Flow:  startHand → [preflop → flop → turn → river] → showdown → complete
 ///  Each round: player acts (check/bet/fold) → bot FHE eval → resolve
 ///  If player checks and bot bets → player must call or fold
-contract CipherHoldem {
+contract CofheHoldem {
 
     // ────────────────────────────────────────────────────────────────
     //  Constants

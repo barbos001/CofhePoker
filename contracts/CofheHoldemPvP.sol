@@ -3,7 +3,7 @@ pragma solidity ^0.8.25;
 
 import "@fhenixprotocol/cofhe-contracts/FHE.sol";
 
-/// @title CipherHoldemPvP — Full Texas Hold'em PvP with FHE
+/// @title CofheHoldemPvP — Full Texas Hold'em PvP with FHE
 /// @notice Improvements over v1:
 ///   - Dealer button rotation (handCount % 2)
 ///   - All-in support with call capping
@@ -12,7 +12,7 @@ import "@fhenixprotocol/cofhe-contracts/FHE.sol";
 ///   - On-chain timeout (block-based auto-forfeit)
 ///   - actions_this_round counter (Linera pattern)
 ///   - Side pot tracking for all-in scenarios
-contract CipherHoldemPvP {
+contract CofheHoldemPvP {
 
     uint256 public constant SB              = 5;
     uint256 public constant BB              = 10;
@@ -416,7 +416,7 @@ contract CipherHoldemPvP {
     function _domainSeparator() internal view returns (bytes32) {
         return keccak256(abi.encode(
             DOMAIN_TYPEHASH,
-            keccak256("CipherHoldemPvP"),
+            keccak256("CofheHoldemPvP"),
             block.chainid,
             address(this)
         ));

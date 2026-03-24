@@ -3,11 +3,11 @@ pragma solidity ^0.8.25;
 
 import "@fhenixprotocol/cofhe-contracts/FHE.sol";
 
-/// @title CipherPokerPvP
+/// @title CofhePokerPvP
 /// @notice Multiplayer 3-card poker with FHE-encrypted cards, lobby, friends, and invites.
 ///         Each player can only decrypt their own cards. Nobody else — not the opponent,
 ///         not validators — can see a hand until showdown reveals the loser's cards.
-contract CipherPokerPvP {
+contract CofhePokerPvP {
 
     // ────────────────────────────────────────────────────────────────
     //  State types

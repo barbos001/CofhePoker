@@ -1,7 +1,7 @@
 /**
  * useGameActions — game action hook (on-chain only).
  *
- * All actions execute real on-chain transactions via CipherPoker contract.
+ * All actions execute real on-chain transactions via CofhePoker contract.
  */
 import { useCallback, useRef } from 'react';
 import { useAccount, useWriteContract, usePublicClient } from 'wagmi';

@@ -4,18 +4,18 @@ import path from "path";
 
 async function main() {
   const network = hre.network.name;
-  console.log(`\nDeploying CipherHoldemPvP to ${network}...`);
+  console.log(`\nDeploying CofheHoldemPvP to ${network}...`);
 
   const [deployer] = await hre.ethers.getSigners();
   console.log(`Deployer: ${deployer.address}`);
   console.log(`Balance:  ${hre.ethers.formatEther(await hre.ethers.provider.getBalance(deployer.address))} ETH\n`);
 
-  const Factory = await hre.ethers.getContractFactory("CipherHoldemPvP");
+  const Factory = await hre.ethers.getContractFactory("CofheHoldemPvP");
   const contract = await Factory.deploy();
   await contract.waitForDeployment();
 
   const address = await contract.getAddress();
-  console.log(`✅  CipherHoldemPvP deployed at: ${address}`);
+  console.log(`✅  CofheHoldemPvP deployed at: ${address}`);
 
   const deploymentDir  = path.join(__dirname, "..", "deployments");
   const deploymentFile = path.join(deploymentDir, `${network}-holdem-pvp.json`);
@@ -24,7 +24,7 @@ async function main() {
   if (!fs.existsSync(deploymentDir)) fs.mkdirSync(deploymentDir, { recursive: true });
 
   fs.writeFileSync(deploymentFile, JSON.stringify({
-    CipherHoldemPvP: address,
+    CofheHoldemPvP: address,
     chainId: (await hre.ethers.provider.getNetwork()).chainId.toString(),
     deployer: deployer.address,
     timestamp: new Date().toISOString(),

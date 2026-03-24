@@ -83,10 +83,10 @@ This means:
 
 | Contract | Purpose | FHE Operations |
 |----------|---------|---------------|
-| `CipherPoker` | 3-Card Poker vs Bot | ~80 ops/hand |
-| `CipherPokerPvP` | 3-Card PvP (rooms, friends) | ~80 ops/hand |
-| `CipherHoldem` | Texas Hold'em vs Bot | ~500 ops/hand |
-| `CipherHoldemPvP` | Hold'em PvP (all-in, timeouts) | ~700 ops/hand |
+| `CofhePoker` | 3-Card Poker vs Bot | ~80 ops/hand |
+| `CofhePokerPvP` | 3-Card PvP (rooms, friends) | ~80 ops/hand |
+| `CofheHoldem` | Texas Hold'em vs Bot | ~500 ops/hand |
+| `CofheHoldemPvP` | Hold'em PvP (all-in, timeouts) | ~700 ops/hand |
 
 ### Key Contract Features
 - **7-card best-of-7 evaluation**: direct FHE algorithm (no brute-force C(7,5))
@@ -140,10 +140,10 @@ VITE_HOLDEM_PVP_CONTRACT_ADDRESS=0x...   # Hold'em PvP contract
 
 ```
 contracts/
-  CipherPoker.sol           3-Card Poker vs Bot
-  CipherPokerPvP.sol        3-Card PvP (rooms, friends, invites)
-  CipherHoldem.sol          Texas Hold'em vs Bot (4 rounds, check/bet/raise)
-  CipherHoldemPvP.sol       Texas Hold'em PvP (all-in, timeouts, EIP-712)
+  CofhePoker.sol           3-Card Poker vs Bot
+  CofhePokerPvP.sol        3-Card PvP (rooms, friends, invites)
+  CofheHoldem.sol          Texas Hold'em vs Bot (4 rounds, check/bet/raise)
+  CofheHoldemPvP.sol       Texas Hold'em PvP (all-in, timeouts, EIP-712)
 
 src/
   components/
