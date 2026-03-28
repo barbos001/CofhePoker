@@ -228,7 +228,7 @@ export const SettingsTab = () => {
   const { balance, history, setAppState, permitStatus, permitError, setPermitStatus, setPermitError } = useGameStore();
   const { address, isConnected, chainId } = useAccount();
   const { disconnect } = useDisconnect();
-  const { ensurePermit, isReady: cofheReady } = useCofhe();
+  const { ensurePermit, removeActivePermit, isReady: cofheReady } = useCofhe();
   const deployed = CONTRACT_ADDRESS !== '0x0000000000000000000000000000000000000000';
 
   // Permits
@@ -244,32 +244,59 @@ export const SettingsTab = () => {
     }
   }, [cofheReady, permitStatus, ensurePermit]);
 
+  // Helper to read persisted boolean setting
+  const readBool = (key: string, defaultVal: boolean) => {
+    const v = localStorage.getItem(key);
+    return v === null ? defaultVal : v === 'true';
+  };
+  const readStr = (key: string, defaultVal: string) => localStorage.getItem(key) ?? defaultVal;
+
   // Wallet & Network
-  const [autoSign, setAutoSign] = useState(false);
+  const [autoSign, _setAutoSign] = useState(() => readBool('poker_autoSign', false));
 
   // Cards
-  const [autoDecrypt, setAutoDecrypt] = useState(true);
-  const [blurCards, setBlurCards] = useState(false);
+  const [autoDecrypt, _setAutoDecrypt] = useState(() => readBool('poker_autoDecrypt', true));
+  const [blurCards, _setBlurCards] = useState(() => readBool('poker_blurCards', false));
 
   // Gas
-  const [showGasCost, setShowGasCost] = useState(true);
-  const [autoEstimateGas, setAutoEstimateGas] = useState(true);
-  const [gasAlerts, setGasAlerts] = useState(true);
+  const [showGasCost, _setShowGasCost] = useState(() => readBool('poker_showGasCost', true));
+  const [autoEstimateGas, _setAutoEstimateGas] = useState(() => readBool('poker_autoEstimateGas', true));
+  const [gasAlerts, _setGasAlerts] = useState(() => readBool('poker_gasAlerts', true));
 
   // Gameplay
-  const [autoPostBlind, setAutoPostBlind] = useState(false);
-  const [autoMuck, setAutoMuck] = useState(true);
-  const [fourColorDeck, setFourColorDeck] = useState(false);
-  const [runItTwice, setRunItTwice] = useState(false);
-  const [turnTimer, setTurnTimer] = useState('30');
+  const [autoPostBlind, _setAutoPostBlind] = useState(() => readBool('poker_autoPostBlind', false));
+  const [autoMuck, _setAutoMuck] = useState(() => readBool('poker_autoMuck', true));
+  const [fourColorDeck, _setFourColorDeck] = useState(() => readBool('poker_fourColorDeck', false));
+  const [runItTwice, _setRunItTwice] = useState(() => readBool('poker_runItTwice', false));
+  const [turnTimer, _setTurnTimer] = useState(() => readStr('poker_turnTimer', '30'));
 
   // Sound & Visual
-  const [soundOn, setSoundOn] = useState(false);
-  const [showAnimations, setShowAnimations] = useState(true);
-  const [tableSkin, setTableSkin] = useState('classic');
+  const [soundOn, _setSoundOn] = useState(() => readBool('poker_soundOn', false));
+  const [showAnimations, _setShowAnimations] = useState(() => readBool('poker_showAnimations', true));
+  const [tableSkin, _setTableSkin] = useState(() => readStr('poker_tableSkin', 'classic'));
 
   // Security
-  const [autoLogout, setAutoLogout] = useState('30');
+  const [autoLogout, _setAutoLogout] = useState(() => readStr('poker_autoLogout', '30'));
+
+  // Persisting wrappers
+  const persist = (key: string, setter: (v: boolean) => void) => (v: boolean) => { setter(v); localStorage.setItem(key, String(v)); };
+  const persistStr = (key: string, setter: (v: string) => void) => (v: string) => { setter(v); localStorage.setItem(key, v); };
+
+  const setAutoSign = persist('poker_autoSign', _setAutoSign);
+  const setAutoDecrypt = persist('poker_autoDecrypt', _setAutoDecrypt);
+  const setBlurCards = persist('poker_blurCards', _setBlurCards);
+  const setShowGasCost = persist('poker_showGasCost', _setShowGasCost);
+  const setAutoEstimateGas = persist('poker_autoEstimateGas', _setAutoEstimateGas);
+  const setGasAlerts = persist('poker_gasAlerts', _setGasAlerts);
+  const setAutoPostBlind = persist('poker_autoPostBlind', _setAutoPostBlind);
+  const setAutoMuck = persist('poker_autoMuck', _setAutoMuck);
+  const setFourColorDeck = persist('poker_fourColorDeck', _setFourColorDeck);
+  const setRunItTwice = persist('poker_runItTwice', _setRunItTwice);
+  const setSoundOn = persist('poker_soundOn', _setSoundOn);
+  const setShowAnimations = persist('poker_showAnimations', _setShowAnimations);
+  const setTurnTimer = persistStr('poker_turnTimer', _setTurnTimer);
+  const setTableSkin = persistStr('poker_tableSkin', _setTableSkin);
+  const setAutoLogout = persistStr('poker_autoLogout', _setAutoLogout);
 
   // Stats
   const wins = history.filter(h => h.result === 'WON').length;
@@ -596,7 +623,11 @@ export const SettingsTab = () => {
           desc="Remove all contract permissions"
           btnLabel="REVOKE ALL"
           btnColor="var(--color-danger)"
-          onClick={() => {}}
+          onClick={async () => {
+            try { await removeActivePermit(); } catch {}
+            setPermitStatus('none');
+            setPermitError(null);
+          }}
         />
       </Section>
 
@@ -701,7 +732,7 @@ export const SettingsTab = () => {
         <Row label="FHE Engine" value="Fhenix CoFHE" mono />
         <div className="flex flex-wrap gap-2 pt-4">
           {[
-            { label: 'GitHub', href: 'https://github.com' },
+            { label: 'GitHub', href: 'https://github.com/leonid-cofhe/cofhe-poker' },
             { label: 'Fhenix Docs', href: 'https://cofhe-docs.fhenix.zone' },
             { label: 'CoFHE SDK', href: 'https://www.npmjs.com/package/@cofhe/sdk' },
           ].map(link => (

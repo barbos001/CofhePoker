@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import { HandEvaluation } from '@/lib/poker';
 
 export type PvPPlayState =
@@ -64,7 +65,7 @@ export interface PvPHistoryEntry {
   opponent:      string;
 }
 
-export const usePvPGameStore = create<PvPGameStore>((set, get) => ({
+export const usePvPGameStore = create<PvPGameStore>()(persist((set, get) => ({
   pvpState:        'idle',
   tableId:         null,
   opponentAddress: null,
@@ -143,5 +144,11 @@ export const usePvPGameStore = create<PvPGameStore>((set, get) => ({
     pot:           0,
     handResult:    null,
     statusMsg:     { text: 'Ready for next hand', color: '#FFF' },
+  }),
+}), {
+  name: 'cofhe-poker-pvp',
+  partialize: (state) => ({
+    tableId:  state.tableId,
+    pvpState: (state.pvpState === 'waiting' || state.pvpState === 'seated') ? state.pvpState : undefined,
   }),
 }));

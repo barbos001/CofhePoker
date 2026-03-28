@@ -110,6 +110,11 @@ contract CofheHoldemPvP {
 
     function createTable(uint256 buyIn, bool isPrivate) external returns (uint256 tableId) {
         require(buyIn >= MIN_BUY_IN && buyIn <= MAX_BUY_IN, "Invalid buy-in");
+        // Auto-clear seat if previous table is finished
+        uint256 prevSeat = seatOf[msg.sender];
+        if (prevSeat != 0 && tables[prevSeat].state == GS.COMPLETE) {
+            seatOf[msg.sender] = 0;
+        }
         require(seatOf[msg.sender] == 0, "Already seated");
         if (balances[msg.sender] == 0) balances[msg.sender] = INITIAL_BALANCE;
         require(balances[msg.sender] >= buyIn, "Insufficient balance");
@@ -716,6 +721,9 @@ contract CofheHoldemPvP {
 
     function _seatPlayer2(uint256 tableId, Table storage t) internal {
         require(msg.sender != t.player1, "Can't join own");
+        // Auto-clear finished seat
+        uint256 ps = seatOf[msg.sender];
+        if (ps != 0 && tables[ps].state == GS.COMPLETE) seatOf[msg.sender] = 0;
         require(seatOf[msg.sender] == 0, "Already seated");
         if (balances[msg.sender] == 0) balances[msg.sender] = INITIAL_BALANCE;
         require(balances[msg.sender] >= t.buyIn, "Insufficient balance");

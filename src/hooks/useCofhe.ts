@@ -1,254 +1,230 @@
 /**
  * useCofhe — initialises the CoFHE client and exposes decrypt helpers.
  *
- * The permit system:
- *   1. getOrCreateSelfPermit() — creates an EIP-712 self-permit if none exists,
- *      stores it as the active permit for (chainId, account).
- *   2. decryptForView(ctHash, FheTypes.Uint64).withPermit(permit).execute()
- *      — fetches from the CoFHE threshold network using the permit.
- *   3. Public cards (allowPublic) still require a permit for the threshold
- *      network auth, just the on-chain ACL is relaxed.
+ * SINGLETON: The client is created once at module level and shared
+ * across all components that call useCofhe(). This prevents multiple
+ * parallel initializations and "CoFHE not initialised" race conditions.
  */
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useWalletClient, usePublicClient } from 'wagmi';
 import { FheTypes } from '@cofhe/sdk';
 import { useGameStore } from '@/store/useGameStore';
 
-// Dynamically import web entry (has WASM) to avoid SSR/build issues
 const loadWebSDK = async () => import('@cofhe/sdk/web');
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type CofheClient = any;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type CofhePermit = any;
-
-interface CofheState {
-  client:    CofheClient | null;
-  isReady:   boolean;
-  isLoading: boolean;
-  error:     string | null;
-}
 
 // ── Logging helper ─────────────────────────────────────────────────
 const FHE = (...args: unknown[]) =>
   console.log('%c[FHE]', 'color:#B366FF;font-weight:bold', ...args);
 
-export const useCofhe = () => {
-  const [state, setState] = useState<CofheState>({
-    client:    null,
-    isReady:   false,
-    isLoading: false,
-    error:     null,
-  });
+// ── MODULE-LEVEL SINGLETON STATE ────────────────────────────────────
+let _client: CofheClient | null = null;
+let _isReady = false;
+let _isLoading = false;
+let _error: string | null = null;
+let _initPromise: Promise<void> | null = null;
+let _lastWalletAddress: string | null = null;
+// Notify all hook instances when state changes
+let _listeners: Set<() => void> = new Set();
 
-  const { data: walletClient } = useWalletClient();
-  const publicClient           = usePublicClient();
-  const clientRef              = useRef<CofheClient>(null);
-  const initAttemptedRef       = useRef(false);
+function _notify() {
+  _listeners.forEach(fn => fn());
+}
 
-  const setPermitStatus = useGameStore(s => s.setPermitStatus);
-  const setPermitError  = useGameStore(s => s.setPermitError);
+async function _initSingleton(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  wc: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  pc: any,
+  walletAddress: string,
+) {
+  // Already init'd for this wallet
+  if (_isReady && _lastWalletAddress === walletAddress) return;
+  // Already loading
+  if (_initPromise) return _initPromise;
 
-  useEffect(() => {
-    if (!walletClient || !publicClient) return;
-    if (initAttemptedRef.current) return;
-    initAttemptedRef.current = true;
+  _isLoading = true;
+  _error = null;
+  _notify();
 
-    const init = async () => {
-      setState(s => ({ ...s, isLoading: true, error: null }));
+  _initPromise = (async () => {
+    const MAX_RETRIES = 3;
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       try {
-        FHE('Loading CoFHE SDK (WASM)…');
+        FHE(`Loading CoFHE SDK (WASM)… (attempt ${attempt + 1})`);
         const t0 = performance.now();
         const { createCofheConfig, createCofheClient } = await loadWebSDK();
         FHE(`SDK loaded in ${(performance.now() - t0).toFixed(0)}ms`);
 
-        // Named imports from chains subpackage
         const { sepolia: sepoliaChain } = await import('@cofhe/sdk/chains');
+        const config = createCofheConfig({ supportedChains: [sepoliaChain] });
 
-        const config = createCofheConfig({
-          supportedChains: [sepoliaChain],
-        });
-        FHE('Config created — chains: [sepolia]');
+        const client = createCofheClient(config);
+        await client.connect(pc, wc);
+        FHE('Connected ✓');
 
-        if (!clientRef.current) {
-          clientRef.current = createCofheClient(config);
-          FHE('Client instance created');
-        }
-
-        // connect() sets chainId + account on the internal store
-        FHE('Connecting to wallet…');
-        const t1 = performance.now();
-        await clientRef.current.connect(publicClient, walletClient);
-        FHE(`Connected in ${(performance.now() - t1).toFixed(0)}ms ✓`);
-
-        setState({ client: clientRef.current, isReady: true, isLoading: false, error: null });
-
-        // Auto-sign permit right after connect so it's ready before first hand
-        FHE('Auto-requesting permit after connect…');
-        try {
-          setPermitStatus('signing');
-          setPermitError(null);
-          const permit = await clientRef.current.permits.getOrCreateSelfPermit();
-          if (permit) {
-            setPermitStatus('active');
-            FHE('Permit auto-signed ✓ — ready for gameplay');
-          }
-        } catch (permitErr) {
-          // Not critical — user will be prompted again when starting a hand
-          FHE('Auto-permit skipped (user may have rejected):', permitErr instanceof Error ? permitErr.message : permitErr);
-          setPermitStatus('none');
-        }
+        _client = client;
+        _isReady = true;
+        _isLoading = false;
+        _lastWalletAddress = walletAddress;
+        _notify();
+        return;
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'CoFHE init failed';
-        FHE('Init FAILED:', msg);
-        setState(s => ({ ...s, isLoading: false, error: msg }));
-        initAttemptedRef.current = false; // allow retry on reconnect/re-render
-        // Auto-retry after 3s if wallet might be slow to connect
-        if (msg.includes('onnect') || msg.includes('wallet')) {
-          FHE('Will auto-retry CoFHE init in 3s…');
-          setTimeout(() => { initAttemptedRef.current = false; }, 3000);
+        FHE(`Init FAILED (attempt ${attempt + 1}/${MAX_RETRIES}):`, msg);
+        if (attempt < MAX_RETRIES - 1) {
+          await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+        } else {
+          _error = msg;
+          _isLoading = false;
+          _notify();
         }
       }
-    };
+    }
+  })();
 
-    void init();
+  try { await _initPromise; } finally { _initPromise = null; }
+}
+
+function _reset() {
+  _client = null;
+  _isReady = false;
+  _isLoading = false;
+  _error = null;
+  _initPromise = null;
+  _lastWalletAddress = null;
+  _notify();
+}
+
+// ── HOOK ──────────────────────────────────────────────────────────
+export const useCofhe = () => {
+  const [, forceUpdate] = useState(0);
+  const { data: walletClient } = useWalletClient();
+  const publicClient = usePublicClient();
+
+  const setPermitStatus = useGameStore(s => s.setPermitStatus);
+  const setPermitError  = useGameStore(s => s.setPermitError);
+
+  // Subscribe to singleton state changes
+  useEffect(() => {
+    const listener = () => forceUpdate(n => n + 1);
+    _listeners.add(listener);
+    return () => { _listeners.delete(listener); };
+  }, []);
+
+  // Init when wallet connects
+  useEffect(() => {
+    if (!walletClient || !publicClient) return;
+    const addr = (walletClient as any).account?.address;
+    if (!addr) return;
+    void _initSingleton(walletClient, publicClient, addr);
   }, [walletClient, publicClient]);
 
   // Reset when wallet disconnects
   useEffect(() => {
-    if (!walletClient) {
-      clientRef.current        = null;
-      initAttemptedRef.current = false;
-      setState({ client: null, isReady: false, isLoading: false, error: null });
+    if (!walletClient && _isReady) {
+      _reset();
       setPermitStatus('none');
       FHE('Wallet disconnected — client reset');
     }
   }, [walletClient, setPermitStatus]);
 
-  /**
-   * Ensure an active self-permit exists for the current account.
-   * Uses a lock to prevent duplicate signing popups.
-   */
-  const permitLockRef = useRef<Promise<CofhePermit> | null>(null);
+  const getOrCreateSelfPermit = useCallback(async () => {
+    if (!_client) throw new Error('CoFHE not initialised');
+    return _client.permits.getOrCreateSelfPermit();
+  }, []);
 
-  const ensurePermit = useCallback(async (): Promise<CofhePermit> => {
-    if (!clientRef.current) throw new Error('CoFHE not initialised');
+  const removeActivePermit = useCallback(async () => {
+    if (!_client) throw new Error('CoFHE not initialised');
+    setPermitStatus('none');
+    return _client.permits.removeActivePermit();
+  }, [setPermitStatus]);
 
-    // Already signing — return the same promise (prevents duplicate popups)
-    if (permitLockRef.current) {
-      FHE('Permit already in progress — waiting…');
-      return permitLockRef.current;
+  const ensurePermit = useCallback(async () => {
+    if (!_client) throw new Error('CoFHE not initialised');
+
+    const { permitStatus } = useGameStore.getState();
+    if (permitStatus === 'signing') {
+      FHE('Permit signing already in progress, waiting…');
+      await new Promise(r => setTimeout(r, 500));
+      return _client.permits.getOrCreateSelfPermit();
     }
 
-    // Already active — return existing permit without popup
-    const { permitStatus: currentStatus } = useGameStore.getState();
-    if (currentStatus === 'active') {
-      try {
-        const existing = await clientRef.current.permits.getOrCreateSelfPermit();
-        if (existing) return existing;
-      } catch { /* fall through to re-sign */ }
+    try {
+      setPermitStatus('signing');
+      setPermitError(null);
+      FHE('Ensuring permit…');
+      const permit = await _client.permits.getOrCreateSelfPermit();
+      setPermitStatus('active');
+      FHE('Permit ready ✓');
+      return permit;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Permit signing failed';
+      FHE('Permit FAILED:', msg);
+      setPermitStatus('error');
+      setPermitError(msg);
+      throw err;
     }
-
-    setPermitStatus('signing');
-    setPermitError(null);
-
-    const promise = (async () => {
-      try {
-        FHE('Requesting EIP-712 self-permit…');
-        const t0 = performance.now();
-        const permit = await clientRef.current!.permits.getOrCreateSelfPermit();
-        FHE(`Permit active ✓ (${(performance.now() - t0).toFixed(0)}ms)`);
-        setPermitStatus('active');
-        return permit;
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Permit signing failed';
-        FHE('Permit FAILED:', msg);
-        setPermitStatus('error');
-        setPermitError(msg);
-        throw err;
-      } finally {
-        permitLockRef.current = null;
-      }
-    })();
-
-    permitLockRef.current = promise;
-    return promise;
   }, [setPermitStatus, setPermitError]);
 
-  /**
-   * Decrypt a player card ctHash.
-   * Retries up to 3 times with exponential backoff if the CoFHE
-   * threshold network returns a transient error (5xx, 403, 404).
-   * @param ctHash  uint256 ctHash from contract.getMyCards()
-   * @returns       card number 0–51
-   */
   const decryptCard = useCallback(async (ctHash: bigint): Promise<number> => {
-    if (!clientRef.current) throw new Error('CoFHE not initialised');
+    if (!_client) throw new Error('CoFHE not initialised');
 
     FHE(`Decrypt card  ctHash=${ctHash.toString().slice(0, 12)}…`);
     const t0 = performance.now();
-    const permit = await ensurePermit();
+    await ensurePermit();
 
     const MAX_RETRIES = 10;
-    // Longer waits: 428 means threshold network hasn't synced yet, needs patience
-    const BACKOFF = [3000, 5000, 8000, 10000, 12000, 15000, 15000, 20000, 20000, 25000]; // ~133s total
+    const BACKOFF = [3000, 5000, 8000, 10000, 12000, 15000, 15000, 20000, 20000, 25000];
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
-        const result = await clientRef.current
+        const result = await _client
           .decryptForView(ctHash, FheTypes.Uint64)
-          .withPermit(permit)
+          .withPermit()
           .execute();
-
         const card = Number(result);
         FHE(`Card decrypted → ${card} (${(performance.now() - t0).toFixed(0)}ms${attempt > 0 ? `, attempt ${attempt + 1}` : ''})`);
         return card;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         const isTransient = /sealOutput|HTTP\s*[3-5]\d{2}|Failed to fetch|NetworkError|ETIMEDOUT/i.test(msg);
-
         if (isTransient && attempt < MAX_RETRIES) {
           const delay = BACKOFF[attempt];
           FHE(`Decrypt failed (${msg}) — retry ${attempt + 1}/${MAX_RETRIES} in ${delay / 1000}s…`);
           await new Promise(r => setTimeout(r, delay));
           continue;
         }
-        throw err; // permanent error or retries exhausted
+        throw err;
       }
     }
-
-    throw new Error('Decrypt retries exhausted'); // unreachable, but TS needs it
+    throw new Error('Decrypt retries exhausted');
   }, [ensurePermit]);
 
-  /**
-   * Decrypt a card that has been made public via FHE.allowPublic().
-   * Still requires a permit for the threshold network auth — the on-chain
-   * ACL is just relaxed so anyone's permit works.
-   */
   const decryptPublicCard = useCallback(async (ctHash: bigint): Promise<number> => {
-    if (!clientRef.current) throw new Error('CoFHE not initialised');
+    if (!_client) throw new Error('CoFHE not initialised');
 
     FHE(`Decrypt public card  ctHash=${ctHash.toString().slice(0, 12)}…`);
     const t0 = performance.now();
-    const permit = await ensurePermit();
+    await ensurePermit();
 
     const MAX_RETRIES = 5;
     const BACKOFF = [2000, 4000, 6000, 8000, 10000];
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
-        const result = await clientRef.current
+        const result = await _client
           .decryptForView(ctHash, FheTypes.Uint64)
-          .withPermit(permit)
+          .withPermit()
           .execute();
-
         const card = Number(result);
         FHE(`Public card decrypted → ${card} (${(performance.now() - t0).toFixed(0)}ms${attempt > 0 ? `, attempt ${attempt + 1}` : ''})`);
         return card;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         const isTransient = /sealOutput|HTTP\s*[3-5]\d{2}|Failed to fetch|NetworkError|ETIMEDOUT/i.test(msg);
-
         if (isTransient && attempt < MAX_RETRIES) {
           const delay = BACKOFF[attempt];
           FHE(`Public card decrypt failed (${msg}) — retry ${attempt + 1}/${MAX_RETRIES} in ${delay / 1000}s…`);
@@ -258,14 +234,9 @@ export const useCofhe = () => {
         throw err;
       }
     }
-
     throw new Error('Public card decrypt retries exhausted');
   }, [ensurePermit]);
 
-  /**
-   * Quick health-check: hits the CoFHE endpoint with a no-op to see if it's alive.
-   * Returns true if reachable, false if down.
-   */
   const checkHealth = useCallback(async (): Promise<boolean> => {
     try {
       const res = await fetch('https://testnet-cofhe-tn.fhenix.zone/v2/sealoutput', {
@@ -274,8 +245,6 @@ export const useCofhe = () => {
         body: '{}',
         signal: AbortSignal.timeout(5000),
       });
-      // 400/422 = endpoint exists, processed our request (bad body is expected) = alive
-      // 5xx/404/428/403 = service is down or broken
       FHE(`Health check: HTTP ${res.status}`);
       return res.status < 500 && res.status !== 404 && res.status !== 428 && res.status !== 403;
     } catch {
@@ -285,13 +254,15 @@ export const useCofhe = () => {
   }, []);
 
   return {
-    cofheClient:       clientRef.current,
-    isReady:           state.isReady,
-    isLoading:         state.isLoading,
-    error:             state.error,
+    cofheClient:       _client,
+    isReady:           _isReady,
+    isLoading:         _isLoading,
+    error:             _error,
     ensurePermit,
     decryptCard,
     decryptPublicCard,
+    getOrCreateSelfPermit,
+    removeActivePermit,
     checkHealth,
   };
 };

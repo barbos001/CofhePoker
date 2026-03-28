@@ -7,7 +7,9 @@ import { useInvites } from '@/hooks/useInvites';
 import { LobbyView } from './LobbyView';
 import { PvPTableView } from './PvPTableView';
 import { InviteModal } from './InviteModal';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useAccount, usePublicClient, useWriteContract } from 'wagmi';
+import { PVP_CONTRACT_ADDRESS, CIPHER_POKER_PVP_ABI, PvPState } from '@/config/contractPvP';
 
 const truncAddr = (a: string) => a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '???';
 
@@ -204,10 +206,65 @@ const SeatedView = () => {
 
 // ── Main PvP Tab ──
 export const PvPTab = () => {
-  const { pvpState } = usePvPGameStore();
+  const { pvpState, setPvPState, setTableId, setOpponent } = usePvPGameStore();
+  const { address } = useAccount();
+  const publicClient = usePublicClient();
+  const { writeContractAsync } = useWriteContract();
 
   // Start event listeners
   usePvPEvents();
+
+  // ── Auto-restore / auto-leave stale seat on mount ──
+  useEffect(() => {
+    if (!publicClient || !address) return;
+    const deployed = PVP_CONTRACT_ADDRESS !== '0x0000000000000000000000000000000000000000';
+    if (!deployed) return;
+
+    (async () => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const seat = Number(await publicClient.readContract({
+          address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
+          functionName: 'getMySeat', account: address,
+        } as any) as bigint);
+        if (seat <= 0) return;
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const info = await publicClient.readContract({
+          address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
+          functionName: 'getPvPTableInfo', args: [BigInt(seat)], account: address,
+        } as any) as [string, string, number, bigint, bigint, bigint, boolean, bigint];
+        const [p1, p2, state] = info;
+
+        if (state === PvPState.COMPLETE) {
+          // Auto-leave completed table
+          const hash = await writeContractAsync({
+            address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
+            functionName: 'leaveTable', args: [BigInt(seat)],
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          } as any);
+          await publicClient.waitForTransactionReceipt({ hash });
+        } else if (state === PvPState.OPEN) {
+          // Restore waiting state
+          setTableId(seat);
+          setPvPState('waiting');
+        } else if (state === PvPState.BOTH_SEATED) {
+          // Restore seated state
+          setTableId(seat);
+          const opp = p1.toLowerCase() === address.toLowerCase() ? p2 : p1;
+          if (opp !== '0x0000000000000000000000000000000000000000') setOpponent(opp);
+          setPvPState('seated');
+        } else if (state >= PvPState.DEALING && state <= PvPState.AWAITING_SHOWDOWN) {
+          // Active game — restore
+          setTableId(seat);
+          const opp = p1.toLowerCase() === address.toLowerCase() ? p2 : p1;
+          if (opp !== '0x0000000000000000000000000000000000000000') setOpponent(opp);
+          setPvPState('acting');
+        }
+      } catch { /* ignore — not seated */ }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [publicClient, address]);
 
   // Route to correct sub-view based on PvP state
   if (pvpState === 'idle') {

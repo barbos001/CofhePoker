@@ -799,18 +799,6 @@ export const LandingPage = () => {
                 <span className="relative z-10">PLAY NOW</span>
               </MagneticButton>
 
-              <a
-                href="${ETHERSCAN_URL}"
-                target="_blank"
-                rel="noreferrer"
-                className="font-mono text-xs tracking-wider px-6 py-3.5 rounded-full transition-all hover:bg-white/5"
-                style={{
-                  color:  'var(--color-text-secondary)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                }}
-              >
-                VIEW CONTRACT ↗
-              </a>
             </motion.div>
           </div>
 
@@ -1580,7 +1568,7 @@ export const LandingPage = () => {
                 </div>
                 <div className="flex flex-col gap-2">
                   <a href="${ETHERSCAN_URL}" target="_blank" rel="noreferrer" className="font-satoshi text-sm transition-colors hover:text-white" style={{ color: 'var(--color-text-secondary)' }}>Etherscan</a>
-                  <a href="https://github.com" target="_blank" rel="noreferrer" className="font-satoshi text-sm transition-colors hover:text-white" style={{ color: 'var(--color-text-secondary)' }}>GitHub</a>
+                  <a href="https://github.com/leonid-cofhe/cofhe-poker" target="_blank" rel="noreferrer" className="font-satoshi text-sm transition-colors hover:text-white" style={{ color: 'var(--color-text-secondary)' }}>GitHub</a>
                 </div>
               </div>
             </div>

@@ -386,6 +386,7 @@ const PayoutLine = ({ label, value, delay }: { label: string; value: number; del
 // ── Result overlay ────────────────────────────────────────────────────
 const ResultOverlay = () => {
   const { playState, handResult, balance, playerEval, botEval, resetToLobby, playerCards, botCards, lastPayout } = useGameStore();
+  const { startHand } = useGameActions();
 
   if (playState !== 'result' || !handResult) return null;
 
@@ -537,7 +538,7 @@ const ResultOverlay = () => {
           <div className="font-mono text-sm" style={{ color: 'var(--color-text-secondary)' }}>
             Balance: {balance.toLocaleString()}
           </div>
-          <PlayCTA onClick={resetToLobby} text="DEAL NEXT" className="text-xl" />
+          <PlayCTA onClick={startHand} text="DEAL NEXT" className="text-xl" />
           <button onClick={resetToLobby} className="font-mono text-xs transition-colors mt-2 hover:text-white" style={{ color: 'var(--color-text-dark)' }}>
             Leave
           </button>

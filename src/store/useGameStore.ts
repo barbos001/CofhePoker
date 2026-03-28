@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import { sleep } from '@/lib/utils';
 import { HandEvaluation, PayoutResult } from '@/lib/poker';
 
@@ -92,7 +93,7 @@ interface GameStore {
 
 const ANTE = 10;
 
-export const useGameStore = create<GameStore>((set, get) => ({
+export const useGameStore = create<GameStore>()(persist((set, get) => ({
   // ── Initial state ──────────────────────────────────────────────────
   appState:  'landing',
   activeTab: 'play',
@@ -215,5 +216,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
     lastPayout:     null,
     holdemRound:    null,
     statusMsg:      { text: '', color: '#FFF' },
+    tableId:        null,
+  }),
+}), {
+  name: 'cofhe-poker-game',
+  partialize: (state) => ({
+    tableId:   state.tableId,
+    gameMode:  state.gameMode,
+    activeTab: state.activeTab,
   }),
 }));

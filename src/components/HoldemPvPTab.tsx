@@ -8,12 +8,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAccount, useWriteContract, usePublicClient } from 'wagmi';
 import { HOLDEM_PVP_CONTRACT_ADDRESS, CIPHER_HOLDEM_PVP_ABI, HoldemPvPState } from '@/config/contractHoldemPvP';
 import { useCofhe } from '@/hooks/useCofhe';
+import { useGameStore } from '@/store/useGameStore';
 import { getCardData } from '@/lib/poker';
 import { evaluate7 } from '@/lib/holdem';
 import { Card } from '@/components/ui/Card';
 import { sleep } from '@/lib/utils';
-
-import { buildRoomUrl } from './PlayHub';
 
 const truncAddr = (a: string) => `${a.slice(0, 6)}...${a.slice(-4)}`;
 const LOG = (...a: unknown[]) => console.log('%c[H-PVP]', 'color:#00BFFF;font-weight:bold', ...a);
@@ -30,7 +29,8 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
   const { isConnected, address } = useAccount();
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
-  const { decryptCard, decryptPublicCard } = useCofhe();
+  const { decryptCard, decryptPublicCard, ensurePermit, isReady: cofheReady } = useCofhe();
+  const setBalance = useGameStore(s => s.setBalance);
   const deployed = HOLDEM_PVP_CONTRACT_ADDRESS !== '0x0000000000000000000000000000000000000000';
 
   const [lobbyState, setLobbyState] = useState<LobbyState>('idle');
@@ -54,11 +54,18 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
   const [myRoundBet, setMyRoundBet] = useState(0);
   const [oppRoundBet, setOppRoundBet] = useState(0);
   const [hasBetToMatch, setHasBetToMatch] = useState(false);
+  const [turnTimer, setTurnTimer] = useState<number | null>(null);
+  const [opponentTimeout, setOpponentTimeout] = useState(false);
   const [activityLog, setActivityLog] = useState<{ id: number; text: string; time: string }[]>([]);
   const logIdRef = useRef(0);
   const lastLogRef = useRef('');
   const pollRef = useRef<ReturnType<typeof setInterval>>();
   const logEndRef = useRef<HTMLDivElement>(null);
+
+  // ── Narrator state (must be at top level, not inside conditional render) ──
+  const [narration, setNarration] = useState<{ text: string; key: number }[]>([]);
+  const narrationKeyRef = useRef(0);
+  const lastNarrationRef = useRef('');
 
   const addLog = useCallback((msg: string) => {
     // Dedup: skip if identical to last message
@@ -79,13 +86,25 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
     } as any);
   }, [publicClient, address]);
 
+  // ── Refresh on-chain balance ──
+  const refreshBalance = useCallback(async () => {
+    try {
+      const bal = Number(await readContract('getBalance') as bigint);
+      setBalance(bal);
+    } catch { /* */ }
+  }, [readContract, setBalance]);
+
   const writeAndWait = useCallback(async (functionName: string, args?: unknown[]) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const hash = await writeContractAsync({
       address: HOLDEM_PVP_CONTRACT_ADDRESS, abi: CIPHER_HOLDEM_PVP_ABI,
       functionName, args,
     } as any);
-    await publicClient!.waitForTransactionReceipt({ hash });
+    const TX_TIMEOUT = 60_000;
+    await Promise.race([
+      publicClient!.waitForTransactionReceipt({ hash }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Transaction timed out (60s). Check Etherscan and retry.')), TX_TIMEOUT)),
+    ]);
     return hash;
   }, [writeContractAsync, publicClient]);
 
@@ -124,6 +143,18 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
           setMyRoundBet(myBet);
           setOppRoundBet(oBet);
           setHasBetToMatch(oBet > myBet);
+          // Check opponent timeout
+          if (!myTurn) {
+            try {
+              const currentBlock = await publicClient!.getBlockNumber();
+              const turnBlock = Number(bs[7]); // turnStartBlock is last field
+              if (currentBlock - BigInt(turnBlock) >= 50n) {
+                setOpponentTimeout(true);
+              } else {
+                setOpponentTimeout(false);
+              }
+            } catch { setOpponentTimeout(false); }
+          }
         } catch { /* getBettingState may not exist on old deploy */ }
       }
 
@@ -149,10 +180,11 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
         setStatus('Showdown — computing results...');
       } else if (state === HoldemPvPState.COMPLETE) {
         if (lobbyState !== 'result') {
-          // Fetch result
+          // Fetch result + update balance
           const [winner, resPot] = await readContract('getResult', [BigInt(tableId)]) as [string, bigint];
           setHandResult({ winner, pot: Number(resPot) });
           setLobbyState('result');
+          await refreshBalance();
 
           // Try to decrypt opponent cards
           try {
@@ -174,7 +206,7 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
 
     // Poll immediately, then every 4s
     pollTableState();
-    pollRef.current = setInterval(pollTableState, 4000);
+    pollRef.current = setInterval(pollTableState, 8000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [tableId, lobbyState, pollTableState]);
 
@@ -202,15 +234,29 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
     }
   }, [lobbyState, refreshLobby]);
 
-  // ── Check if already seated on mount ──
+  // ── Check if already seated on mount + refresh balance ──
   useEffect(() => {
     if (!deployed || !publicClient || !address) return;
+    refreshBalance();
     (async () => {
-      const seat = Number(await readContract('getMySeat') as bigint);
-      if (seat > 0) {
-        setTableId(seat);
-        // pollTableState will determine the correct lobbyState
-      }
+      try {
+        const seat = Number(await readContract('getMySeat') as bigint);
+        if (seat > 0) {
+          setTableId(seat);
+
+          // Restore invite code for private waiting rooms
+          try {
+            const info = await readContract('getTableInfo', [BigInt(seat)]) as [string, string, number, bigint, bigint, bigint, boolean, string];
+            const isPrivateTable = info[6];
+            const state = info[2];
+            if (isPrivateTable && state === HoldemPvPState.OPEN) {
+              const code = await readContract('getInviteCode', [BigInt(seat)]) as `0x${string}`;
+              setInviteCode(`${seat}:${code}`);
+              setIsPrivate(true);
+            }
+          } catch { /* ignore */ }
+        }
+      } catch { /* ignore */ }
     })();
   }, [deployed, publicClient, address, readContract]);
 
@@ -253,18 +299,24 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
   }, [roomLink, deployed, publicClient, address, readContract, writeAndWait, addLog]);
 
   const [decryptingCards, setDecryptingCards] = useState(false);
+  const decryptRetryCount = useRef(0);
+  const MAX_DECRYPT_RETRIES = 3;
 
   // ── Decrypt my cards when entering playing state ──
   useEffect(() => {
-    if (lobbyState !== 'playing' || !tableId || myCards.length > 0 || decryptingCards) return;
+    if (lobbyState !== 'playing' || !tableId || myCards.length > 0 || decryptingCards || !cofheReady) return;
+    if (decryptRetryCount.current >= MAX_DECRYPT_RETRIES) {
+      addLog('FHE: Card decrypt failed after max retries');
+      setStatus('Decrypt failed — try leaving and rejoining');
+      return;
+    }
     setDecryptingCards(true);
-    addLog('FHE: Decrypting your hole cards...');
+    decryptRetryCount.current++;
+    addLog(`FHE: Decrypting your hole cards... (attempt ${decryptRetryCount.current})`);
     (async () => {
       try {
         setStatus('Decrypting your cards...');
         const [c0, c1] = await readContract('getMyCards', [BigInt(tableId)]) as [bigint, bigint];
-        // Wait for FHE sync
-        await sleep(15000);
         const cards = [];
         for (const ct of [c0, c1]) {
           const cardId = await decryptCard(ct);
@@ -273,11 +325,15 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
           LOG(`Hole card: ${d.rankString}${d.suit}`);
         }
         setMyCards(cards);
+        decryptRetryCount.current = 0; // reset on success
         addLog(`Cards decrypted: ${cards.map(c => { const d = getCardData(c); return d.rankString + d.suit; }).join(' ')}`);
-      } catch (e) { LOG('Card decrypt error:', e); addLog('FHE: Card decrypt failed, retrying...'); }
+      } catch (e) {
+        LOG('Card decrypt error:', e);
+        addLog('FHE: Card decrypt failed, retrying...');
+      }
       setDecryptingCards(false);
     })();
-  }, [lobbyState, tableId, myCards.length, decryptingCards, readContract, decryptCard]);
+  }, [lobbyState, tableId, myCards.length, decryptingCards, cofheReady, readContract, decryptCard]);
 
   // ── Decrypt community cards when round advances ──
   const prevRound = useRef('');
@@ -294,7 +350,6 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
     (async () => {
       try {
         setStatus(`Decrypting ${roundName} cards...`);
-        await sleep(10000); // FHE sync wait
         const comm = await readContract('getCommunityCards', [BigInt(tableId)]) as [bigint, bigint, bigint, bigint, bigint];
         const newCards: number[] = [];
         for (let i = communityCards.length; i < expectedCount; i++) {
@@ -314,22 +369,51 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
     if (!deployed) { setError('Contract not deployed'); return; }
     setLoading(true); setError('');
     try {
-      // Check if already seated — try to clear with ONE tx max
-      const existingSeat = Number(await readContract('getMySeat') as bigint);
-      if (existingSeat > 0) {
-        LOG(`Already seated at #${existingSeat}, clearing...`);
-        // Try leaveTable first (works for OPEN/BOTH_SEATED/COMPLETE)
-        try {
-          await writeAndWait('leaveTable', [BigInt(existingSeat)]);
-        } catch {
-          // If game in progress, this will fail — that's OK, user must fold first
-          setError('You have an active game. Fold or finish it first.');
-          setLoading(false);
-          return;
-        }
-      }
+      await ensurePermit();
 
-      // Single TX to create table
+      // Check if already seated — handle based on table state
+      try {
+        const existingSeat = Number(await readContract('getMySeat') as bigint);
+        if (existingSeat > 0) {
+          const info = await readContract('getTableInfo', [BigInt(existingSeat)]) as [string, string, number, bigint, bigint, bigint, boolean, string];
+          const state = info[2];
+
+          if (state === HoldemPvPState.OPEN) {
+            // Table still open — restore it instead of creating new
+            LOG(`Already have OPEN table #${existingSeat} — restoring`);
+            setTableId(existingSeat);
+            setLobbyState('waiting');
+            addLog(`Restored table #${existingSeat}`);
+            if (info[6]) { // isPrivate
+              try {
+                const code = await readContract('getInviteCode', [BigInt(existingSeat)]) as `0x${string}`;
+                setInviteCode(`${existingSeat}:${code}`);
+                setIsPrivate(true);
+              } catch { /* */ }
+            }
+            setLoading(false);
+            return;
+          }
+
+          if (state >= HoldemPvPState.PREFLOP && state <= HoldemPvPState.AWAITING_SHOWDOWN) {
+            // Active game — resume it
+            LOG(`Resuming active game at table #${existingSeat}`);
+            setTableId(existingSeat);
+            setLobbyState('playing');
+            addLog(`Resumed game at table #${existingSeat}`);
+            setLoading(false);
+            return;
+          }
+
+          // COMPLETE or BOTH_SEATED — safe to auto-leave
+          if (state === HoldemPvPState.COMPLETE || state === HoldemPvPState.BOTH_SEATED) {
+            LOG(`Already seated at #${existingSeat} (state ${state}) — leaving first`);
+            addLog(`Leaving stale table #${existingSeat}...`);
+            await writeAndWait('leaveTable', [BigInt(existingSeat)]);
+          }
+        }
+      } catch { /* no seat — proceed */ }
+
       await writeAndWait('createTable', [BigInt(buyIn), isPrivate]);
 
       const seat = Number(await readContract('getMySeat') as bigint);
@@ -339,33 +423,19 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
       setLobbyState('waiting');
       addLog(`Table #${seat} created (${isPrivate ? 'private' : 'public'})`);
 
-      // For private: fetch invite code and build full URL
+      // For private: fetch invite code — show as "tableId:code"
       if (isPrivate) {
         try {
           const code = await readContract('getInviteCode', [BigInt(seat)]) as `0x${string}`;
-          const url = buildRoomUrl('holdem', seat, code);
-          setInviteCode(url);
+          setInviteCode(`${seat}:${code}`);
         } catch { /* */ }
-      } else {
-        // Public room — shareable link without code
-        setInviteCode(buildRoomUrl('holdem', seat));
       }
     } catch (e) {
-      // User rejected or TX failed — check if created anyway
+      // User rejected or TX failed
       const msg = e instanceof Error ? e.message : 'Failed';
-      if (msg.includes('User rejected') || msg.includes('denied')) {
+      if (msg.includes('User rejected') || msg.includes('denied') || msg.includes('timed out')) {
         setError('Transaction cancelled');
       } else {
-        try {
-          const seat = Number(await readContract('getMySeat') as bigint);
-          if (seat > 0) {
-            setTableId(seat);
-            setLobbyState('waiting');
-            addLog(`Table #${seat} created`);
-            setLoading(false);
-            return;
-          }
-        } catch { /* */ }
         setError(msg);
       }
     }
@@ -376,13 +446,26 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
     if (!deployed) return;
     setLoading(true); setError('');
     try {
+      // Auto-leave stale table first
+      try {
+        const existingSeat = Number(await readContract('getMySeat') as bigint);
+        if (existingSeat > 0 && existingSeat !== id) {
+          await writeAndWait('leaveTable', [BigInt(existingSeat)]);
+        }
+      } catch { /* */ }
+      // Validate table before joining
+      const info = await readContract('getTableInfo', [BigInt(id)]) as [string, string, number, bigint, bigint, bigint, boolean, string];
+      const state = info[2];
+      if (state !== HoldemPvPState.OPEN) { setError('Table is no longer open'); setLoading(false); return; }
+      if (info[1] !== '0x0000000000000000000000000000000000000000') { setError('Table is full'); setLoading(false); return; }
+
       await writeAndWait('joinTable', [BigInt(id)]);
       setTableId(id);
       setLobbyState('seated');
       LOG(`Joined table #${id}`);
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
     setLoading(false);
-  }, [deployed, writeAndWait]);
+  }, [deployed, writeAndWait, readContract]);
 
   const handleJoinByCode = useCallback(async () => {
     if (!deployed || !joinInput.trim()) { setError('Paste the room link or invite code'); return; }
@@ -417,6 +500,12 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
 
       if (isNaN(tid!) || tid! <= 0) { setError('Invalid table ID'); setLoading(false); return; }
 
+      // Validate table before joining
+      const info = await readContract('getTableInfo', [BigInt(tid)]) as [string, string, number, bigint, bigint, bigint, boolean, string];
+      const tState = info[2];
+      if (tState !== HoldemPvPState.OPEN) { setError('Table is no longer open'); setLoading(false); return; }
+      if (info[1] !== '0x0000000000000000000000000000000000000000') { setError('Table is full'); setLoading(false); return; }
+
       if (code) {
         await writeAndWait('joinByInviteCode', [BigInt(tid), code as `0x${string}`]);
       } else {
@@ -432,31 +521,69 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
   const handleStartHand = useCallback(async () => {
     if (!tableId) return;
     setLoading(true); setError('');
+
+    // Verify table is actually ready (both players seated)
+    try {
+      const info = await readContract('getTableInfo', [BigInt(tableId)]) as [string, string, number, bigint, bigint, bigint, boolean, string];
+      const state = info[2];
+      if (state === HoldemPvPState.OPEN) {
+        setError('Waiting for opponent to join');
+        setLobbyState('waiting');
+        setLoading(false);
+        return;
+      }
+      if (state !== HoldemPvPState.BOTH_SEATED && state !== HoldemPvPState.COMPLETE) {
+        setError('Game already in progress');
+        setLoading(false);
+        return;
+      }
+    } catch (e) {
+      LOG('Failed to verify table state before startHand:', e);
+      setError('Could not verify table state. Try again.');
+      setLoading(false);
+      return;
+    }
+
     setMyCards([]); setCommunityCards([]); setOppCards([]); setHandResult(null);
     prevRound.current = '';
+    decryptRetryCount.current = 0;
     try {
+      await ensurePermit();
       await writeAndWait('startHand', [BigInt(tableId)]);
       setLobbyState('playing');
+      await refreshBalance(); // ante deducted
       addLog('Hand started — dealing encrypted cards');
       addLog('FHE: Generating 9 encrypted cards (3 seeds)');
       LOG('Hand started');
-    } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Failed';
+      // If TX failed but opponent already started — re-sync state from chain
+      if (msg.includes('Cannot start') || msg.includes('reverted')) {
+        addLog('Hand already started by opponent — syncing...');
+        await pollTableState();
+      } else {
+        setError(msg);
+      }
+    }
     setLoading(false);
-  }, [tableId, writeAndWait]);
+  }, [tableId, writeAndWait, readContract, addLog, ensurePermit, refreshBalance, pollTableState]);
 
   const handleLeave = useCallback(async () => {
     if (!tableId) return;
     try {
+      // leaveTable handles forfeit automatically if game is active
       await writeAndWait('leaveTable', [BigInt(tableId)]);
       setTableId(null);
       setLobbyState('idle');
       setMyCards([]); setCommunityCards([]); setOppCards([]);
       refreshLobby();
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
-  }, [tableId, writeAndWait, refreshLobby]);
+  }, [tableId, lobbyState, writeAndWait, refreshLobby, addLog]);
 
+  const actingRef = useRef(false);
   const handleAct = useCallback(async (action: number) => {
-    if (!tableId) return;
+    if (!tableId || actingRef.current) return;
+    actingRef.current = true;
     setLoading(true); setError('');
     try {
       const actionNames: Record<number, string> = { 0: 'Check', 1: 'Bet', 2: 'Raise', 3: 'Fold', 4: 'Call', 5: 'All-in' };
@@ -467,10 +594,12 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
       await pollTableState();
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
     setLoading(false);
+    actingRef.current = false;
   }, [tableId, writeAndWait, pollTableState]);
 
   const handleFold = useCallback(async () => {
-    if (!tableId) return;
+    if (!tableId || actingRef.current) return;
+    actingRef.current = true;
     setLoading(true);
     try {
       await writeAndWait('fold', [BigInt(tableId)]);
@@ -478,6 +607,7 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
       await pollTableState();
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
     setLoading(false);
+    actingRef.current = false;
   }, [tableId, writeAndWait, pollTableState]);
 
   // ── Showdown flow ──
@@ -511,6 +641,78 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
   const myHandName = myCards.length >= 2 && communityCards.length >= 3
     ? evaluate7([...myCards, ...communityCards]).name : '';
 
+  // ── Narrator callbacks + effects (must be before any early returns) ──
+  const narrate = useCallback((text: string) => {
+    if (text === lastNarrationRef.current) return;
+    lastNarrationRef.current = text;
+    const key = ++narrationKeyRef.current;
+    setNarration(prev => [...prev.slice(-4), { text, key }]);
+  }, []);
+
+  useEffect(() => {
+    if (decryptingCards) narrate('The dealer slides two cards face-down across the felt. CoFHE threshold network begins decrypting...');
+  }, [decryptingCards, narrate]);
+
+  useEffect(() => {
+    if (decryptingCommunity && roundName === 'Flop') narrate('Three community cards hit the board. The flop is being revealed through FHE decryption...');
+    else if (decryptingCommunity && roundName === 'Turn') narrate('The turn card burns and flips. One more card joins the board...');
+    else if (decryptingCommunity && roundName === 'River') narrate('The final card. The river decides everything...');
+  }, [decryptingCommunity, roundName, narrate]);
+
+  useEffect(() => {
+    if (myCards.length === 2 && !decryptingCards) {
+      const c = myCards.map(id => { const d = getCardData(id); return d.rankString + d.suit; });
+      narrate(`Cards revealed: ${c.join(' ')}. Time to make a decision.`);
+    }
+  }, [myCards.length, decryptingCards, myCards, narrate]);
+
+  useEffect(() => {
+    if (isMyTurn && myCards.length >= 2 && !decryptingCards && !decryptingCommunity) {
+      if (hasBetToMatch) narrate(`Opponent has bet. The pressure is on — call ${oppRoundBet - myRoundBet} chips, raise, or walk away?`);
+      else if (roundName === 'Pre-flop') narrate('Pre-flop action. Check to see more cards for free, or bet to build the pot?');
+      else narrate(`${roundName} action. The board tells a story — what will you do?`);
+    } else if (!isMyTurn && lobbyState === 'playing' && myCards.length >= 2) {
+      narrate('Opponent is thinking... The tension builds at the table.');
+    }
+  }, [isMyTurn, hasBetToMatch, roundName, myCards.length, decryptingCards, decryptingCommunity, lobbyState, oppRoundBet, myRoundBet, narrate]);
+
+  useEffect(() => {
+    if (lobbyState === 'showdown') narrate('All bets are in. The cards speak now — FHE evaluation determines the winner...');
+  }, [lobbyState, narrate]);
+
+  // ── Turn timer (auto-fold after 120s) ──
+  useEffect(() => {
+    if (!isMyTurn || lobbyState !== 'playing') {
+      setTurnTimer(null);
+      return;
+    }
+    const TURN_TIMEOUT = 120; // 2 min for PvP
+    setTurnTimer(TURN_TIMEOUT);
+    const id = setInterval(() => {
+      setTurnTimer(prev => {
+        if (prev === null || prev <= 1) {
+          clearInterval(id);
+          // Auto-fold on timeout
+          handleFold();
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [isMyTurn, lobbyState]);
+
+  // ── Warn before leaving during active game ──
+  useEffect(() => {
+    if (lobbyState !== 'playing' && lobbyState !== 'showdown') return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [lobbyState]);
+
   // ── Render ──
   if (!deployed) {
     return (
@@ -538,7 +740,28 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
           </button>
         </div>
 
-        {error && <div className="mb-4 px-4 py-2.5 rounded-xl font-mono text-xs" style={{ background: 'rgba(255,59,59,0.08)', border: '1px solid rgba(255,59,59,0.2)', color: 'var(--color-danger)' }}>{error}</div>}
+        {error && (
+          <div className="mb-4 px-4 py-2.5 rounded-xl font-mono text-xs flex items-center justify-between gap-3" style={{ background: 'rgba(255,59,59,0.08)', border: '1px solid rgba(255,59,59,0.2)', color: 'var(--color-danger)' }}>
+            <span>{error}</span>
+            <button
+              onClick={async () => {
+                setError('');
+                try {
+                  const seat = Number(await readContract('getMySeat') as bigint);
+                  if (seat > 0) {
+                    await writeAndWait('leaveTable', [BigInt(seat)]);
+                    addLog(`Left table #${seat}`);
+                  }
+                  refreshLobby();
+                } catch { /* */ }
+              }}
+              className="shrink-0 px-3 py-1.5 rounded-lg font-mono text-[10px] font-bold uppercase"
+              style={{ background: 'rgba(255,59,59,0.15)', color: 'var(--color-danger)' }}
+            >
+              FORCE LEAVE
+            </button>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
           {/* ── Create Room Panel ── */}
@@ -646,29 +869,60 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
         <h2 className="font-clash text-2xl" style={{ color: '#00BFFF' }}>Waiting for Opponent</h2>
         <p className="font-mono text-xs" style={{ color: 'var(--color-text-muted)' }}>Table #{tableId}</p>
 
-        {/* Share room link */}
-        {inviteCode && (
-          <div className="flex flex-col items-center gap-3 mt-2 px-6 py-5 rounded-xl max-w-[500px] w-full"
-            style={{ background: isPrivate ? 'rgba(179,102,255,0.06)' : 'rgba(0,191,255,0.06)', border: `1px solid ${isPrivate ? 'rgba(179,102,255,0.2)' : 'rgba(0,191,255,0.2)'}` }}>
-            <span className="font-mono text-xs tracking-wider uppercase font-bold" style={{ color: isPrivate ? 'var(--color-fhe)' : '#00BFFF' }}>
-              {isPrivate ? 'Private room — share link' : 'Public room — share link'}
+        {/* Private room — share invite code */}
+        {isPrivate && inviteCode && (
+          <div className="flex flex-col items-center gap-3 mt-2 px-6 py-5 rounded-xl max-w-[460px] w-full"
+            style={{ background: 'rgba(179,102,255,0.06)', border: '1px solid rgba(179,102,255,0.2)' }}>
+            <span className="font-mono text-xs tracking-wider uppercase font-bold" style={{ color: 'var(--color-fhe)' }}>
+              Private room — share invite code
             </span>
-            <div className="w-full px-3 py-2.5 rounded-lg font-mono text-[10px] break-all select-all cursor-text"
-              style={{ background: 'rgba(0,0,0,0.3)', border: `1px solid ${isPrivate ? 'rgba(179,102,255,0.15)' : 'rgba(0,191,255,0.15)'}`, color: 'rgba(255,255,255,0.7)' }}>
+            <div className="w-full px-3 py-2.5 rounded-lg font-mono text-[11px] break-all select-all cursor-text text-center"
+              style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(179,102,255,0.15)', color: 'rgba(255,255,255,0.8)' }}>
               {inviteCode}
             </div>
+            <div className="flex gap-2 w-full">
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(inviteCode);
+                  addLog('Invite code copied!');
+                }}
+                className="flex-1 h-10 rounded-lg font-mono text-sm font-bold tracking-wider uppercase"
+                style={{ background: 'var(--color-fhe)', color: '#000' }}>
+                COPY CODE
+              </button>
+              <button
+                onClick={() => {
+                  const link = `${window.location.origin}${window.location.pathname}#/room/holdem/${inviteCode}`;
+                  navigator.clipboard.writeText(link);
+                  addLog('Room link copied!');
+                }}
+                className="flex-1 h-10 rounded-lg font-mono text-sm font-bold tracking-wider uppercase"
+                style={{ background: 'rgba(0,191,255,0.15)', color: '#00BFFF', border: '1px solid rgba(0,191,255,0.3)' }}>
+                COPY LINK
+              </button>
+            </div>
+            <span className="font-mono text-[9px]" style={{ color: 'rgba(255,255,255,0.25)' }}>
+              Share code or full link — opponent pastes in "Join by Code"
+            </span>
+          </div>
+        )}
+
+        {/* Public room — show table number + copy link */}
+        {!isPrivate && tableId && (
+          <div className="flex flex-col items-center gap-3 mt-2">
+            <p className="font-mono text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>
+              Public table — visible in lobby for everyone
+            </p>
             <button
               onClick={() => {
-                navigator.clipboard.writeText(inviteCode);
+                const link = `${window.location.origin}${window.location.pathname}#/room/holdem/${tableId}`;
+                navigator.clipboard.writeText(link);
                 addLog('Room link copied!');
               }}
-              className="w-full h-10 rounded-lg font-mono text-sm font-bold tracking-wider uppercase"
-              style={{ background: isPrivate ? 'var(--color-fhe)' : '#00BFFF', color: '#000' }}>
-              COPY LINK
+              className="h-9 px-5 rounded-lg font-mono text-xs font-bold tracking-wider uppercase"
+              style={{ background: 'rgba(0,191,255,0.1)', color: '#00BFFF', border: '1px solid rgba(0,191,255,0.2)' }}>
+              📋 COPY ROOM LINK
             </button>
-            <span className="font-mono text-[9px]" style={{ color: 'rgba(255,255,255,0.25)' }}>
-              {isPrivate ? 'Only people with this link can join' : 'Anyone with this link joins instantly'}
-            </span>
           </div>
         )}
 
@@ -699,62 +953,6 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
       </div>
     );
   }
-
-  // ── Narrator commentary ──
-  const [narration, setNarration] = useState<{ text: string; key: number }[]>([]);
-  const narrationKeyRef = useRef(0);
-  const lastNarrationRef = useRef('');
-
-  const narrate = useCallback((text: string) => {
-    if (text === lastNarrationRef.current) return;
-    lastNarrationRef.current = text;
-    const key = ++narrationKeyRef.current;
-    setNarration(prev => [...prev.slice(-4), { text, key }]);
-  }, []);
-
-  // Generate commentary based on state changes
-  useEffect(() => {
-    if (decryptingCards) {
-      narrate('The dealer slides two cards face-down across the felt. CoFHE threshold network begins decrypting...');
-    }
-  }, [decryptingCards, narrate]);
-
-  useEffect(() => {
-    if (decryptingCommunity && roundName === 'Flop') {
-      narrate('Three community cards hit the board. The flop is being revealed through FHE decryption...');
-    } else if (decryptingCommunity && roundName === 'Turn') {
-      narrate('The turn card burns and flips. One more card joins the board...');
-    } else if (decryptingCommunity && roundName === 'River') {
-      narrate('The final card. The river decides everything...');
-    }
-  }, [decryptingCommunity, roundName, narrate]);
-
-  useEffect(() => {
-    if (myCards.length === 2 && !decryptingCards) {
-      const c = myCards.map(id => { const d = getCardData(id); return d.rankString + d.suit; });
-      narrate(`Cards revealed: ${c.join(' ')}. Time to make a decision.`);
-    }
-  }, [myCards.length, decryptingCards, myCards, narrate]);
-
-  useEffect(() => {
-    if (isMyTurn && myCards.length >= 2 && !decryptingCards && !decryptingCommunity) {
-      if (hasBetToMatch) {
-        narrate(`Opponent has bet. The pressure is on — call ${oppRoundBet - myRoundBet} chips, raise, or walk away?`);
-      } else if (roundName === 'Pre-flop') {
-        narrate('Pre-flop action. Check to see more cards for free, or bet to build the pot?');
-      } else {
-        narrate(`${roundName} action. The board tells a story — what will you do?`);
-      }
-    } else if (!isMyTurn && lobbyState === 'playing' && myCards.length >= 2) {
-      narrate('Opponent is thinking... The tension builds at the table.');
-    }
-  }, [isMyTurn, hasBetToMatch, roundName, myCards.length, decryptingCards, decryptingCommunity, lobbyState, oppRoundBet, myRoundBet, narrate]);
-
-  useEffect(() => {
-    if (lobbyState === 'showdown') {
-      narrate('All bets are in. The cards speak now — FHE evaluation determines the winner...');
-    }
-  }, [lobbyState, narrate]);
 
   // ── PLAYING ──
   if (lobbyState === 'playing' || lobbyState === 'showdown') {
@@ -887,7 +1085,14 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
         </div>
 
         {/* Status */}
-        <p className="font-mono text-sm" style={{ color: isMyTurn ? '#FFE03D' : 'var(--color-text-muted)' }}>{status}</p>
+        <div className="flex items-center gap-3">
+          <p className="font-mono text-sm" style={{ color: isMyTurn ? '#FFE03D' : 'var(--color-text-muted)' }}>{status}</p>
+          {turnTimer !== null && (
+            <span className="font-mono text-xs" style={{ color: turnTimer < 15 ? 'var(--color-danger)' : 'var(--color-primary)' }}>
+              ⏱ {turnTimer}s
+            </span>
+          )}
+        </div>
 
         {error && <div className="px-4 py-2 rounded-xl font-mono text-xs w-full" style={{ background: 'rgba(255,59,59,0.08)', color: 'var(--color-danger)' }}>{error}</div>}
 
@@ -1015,16 +1220,39 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
           </button>
         )}
 
+        {/* Opponent timeout claim */}
+        {opponentTimeout && !isMyTurn && (
+          <button
+            onClick={async () => {
+              setLoading(true);
+              try {
+                await writeAndWait('checkTimeout', [BigInt(tableId!)]);
+                addLog('Opponent timed out — you win!');
+                await pollTableState();
+              } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
+              setLoading(false);
+            }}
+            className="h-10 px-6 rounded-xl font-mono text-xs font-bold tracking-wider uppercase"
+            style={{ background: 'rgba(255,59,59,0.1)', border: '1px solid rgba(255,59,59,0.3)', color: 'var(--color-danger)' }}>
+            ⏱ CLAIM TIMEOUT
+          </button>
+        )}
+
         {/* Activity Log */}
         {activityLog.length > 0 && (
-          <div className="w-full max-w-[500px] mt-4 rounded-xl overflow-hidden"
-            style={{ background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.08)' }}>
-            <div className="px-3 py-2 flex items-center gap-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-              <motion.div className="w-2 h-2 rounded-full" style={{ background: 'var(--color-success)' }}
-                animate={{ scale: [1, 1.4, 1], opacity: [1, 0.4, 1] }} transition={{ duration: 1.2, repeat: Infinity }} />
-              <span className="font-mono text-[9px] tracking-widest uppercase font-bold" style={{ color: 'rgba(255,255,255,0.5)' }}>GAME LOG</span>
+          <div className="w-full max-w-[500px] mt-4 rounded-2xl overflow-hidden"
+            style={{
+              background: 'linear-gradient(145deg, rgba(10,10,10,0.85), rgba(0,0,0,0.95))',
+              border: '1px solid rgba(0,191,255,0.12)',
+              boxShadow: '0 4px 24px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.03)',
+            }}>
+            <div className="px-4 py-2.5 flex items-center gap-2.5" style={{ borderBottom: '1px solid rgba(0,191,255,0.08)', background: 'rgba(0,191,255,0.03)' }}>
+              <motion.div className="w-2 h-2 rounded-full" style={{ background: '#00BFFF', boxShadow: '0 0 6px rgba(0,191,255,0.5)' }}
+                animate={{ scale: [1, 1.3, 1], opacity: [1, 0.5, 1] }} transition={{ duration: 1.5, repeat: Infinity }} />
+              <span className="font-mono text-[9px] tracking-[0.2em] uppercase font-bold" style={{ color: '#00BFFF' }}>GAME LOG</span>
+              <span className="font-mono text-[8px] ml-auto" style={{ color: 'rgba(255,255,255,0.2)' }}>{activityLog.length} entries</span>
             </div>
-            <div className="px-3 py-2 max-h-[140px] overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
+            <div className="px-4 py-2.5 max-h-[160px] overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
               <AnimatePresence initial={false}>
                 {activityLog.map((entry) => {
                   const isTurn = entry.text.includes('Your turn');

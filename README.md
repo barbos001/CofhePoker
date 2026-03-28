@@ -1,219 +1,234 @@
-# CoFHE Poker
+# Cofhe Poker ♠
 
-**Fully on-chain Texas Hold'em and 3-Card Poker with FHE-encrypted cards.**
+**700 FHE operations per hand. 35 million gas per showdown. Zero plaintext cards on-chain. Ever.**
 
-Built on [Fhenix](https://fhenix.io) using the CoFHE SDK for Fully Homomorphic Encryption. Every card is generated, evaluated, and compared entirely in encrypted form. No trusted dealer, no server, no one can see your hand.
-
-> Fhenix Buildathon 2026 submission
+Cofhe Poker is a fully on-chain poker platform where every card is dealt, evaluated, and compared as ciphertext using Fully Homomorphic Encryption. Four game modes, four deployed contracts, and the most computationally intensive FHE application on Ethereum Sepolia today.
 
 ---
 
-## The Problem
+## What it does
 
-Online poker requires trust: a central server deals cards, knows every hand, and determines winners. Players must trust that the operator is not cheating, not colluding, and not leaking data. Even blockchain-based poker projects typically move card logic off-chain, defeating the purpose of decentralization.
+I built a complete poker engine that runs entirely inside FHE. Not "cards generated off-chain and committed as hashes" — actual encrypted card dealing, hand evaluation, and showdown comparison, all computed on encrypted values that nobody can read.
 
-## Our Approach
+The platform supports 4 game modes:
 
-CoFHE Poker solves this by running the **entire poker engine on-chain using Fully Homomorphic Encryption (FHE)**. Cards are encrypted random numbers that can be compared, sorted, and evaluated without ever being decrypted on-chain. Only the card owner can decrypt their own cards via the CoFHE threshold network, and only after the smart contract grants permission through FHE ACL (`FHE.allow`).
+| Mode | Description |
+|------|-------------|
+| **3-Card Poker vs Bot** | Casino-style: 3 encrypted cards each, play or fold, FHE showdown |
+| **3-Card PvP** | Player vs player with private rooms, invite codes, and on-chain friend system |
+| **Texas Hold'em vs Bot** | Full 4-round game with pre-flop/flop/turn/river and FHE bot evaluation per street |
+| **Hold'em PvP** | Heads-up Hold'em with dealer rotation, blinds, all-in, side pots, block-based timeouts, and EIP-712 signed action batching |
 
-This means:
-- **Validators** see only ciphertext — they process encrypted operations without knowing the cards
-- **Opponents** cannot access each other's cards until showdown
-- **MEV bots** cannot front-run based on card values
-- **The contract itself** never handles plaintext card data
+When two players sit at a Hold'em PvP table:
+- Cards are generated via `FHE.randomEuint64()` — encrypted random seeds that even the contract can't read
+- Each card is `(seed + offset) % 52`, computed entirely in ciphertext
+- `FHE.allow(card, playerAddress)` gates decryption — only YOU can see your hole cards
+- Community cards are revealed round-by-round via `FHE.allowPublic()`
+- At showdown, `FHE.gt(playerScore, opponentScore)` determines the winner without decrypting the scores
+- `FHE.eq()` catches ties for split pots
 
----
+Nobody — not validators, not your opponent, not MEV bots — sees any card until the contract explicitly permits it.
 
-## Game Modes
+## The problem it solves
 
-| Mode | Players | Description |
-|------|---------|-------------|
-| **3-Card Poker vs Bot** | 1 | Casino-style: 3 encrypted cards, play or fold, instant FHE showdown |
-| **Texas Hold'em vs Bot** | 1 | Full 4-round game: pre-flop, flop, turn, river with check/bet/raise/fold |
-| **3-Card PvP** | 2 | Player vs player with rooms, friends, invite codes |
-| **Hold'em PvP** | 2 | Heads-up Hold'em: dealer rotation, all-in, side pots, on-chain timeouts |
+Online poker has a trust problem. Every major platform runs a centralized server that knows every hand. "Provably fair" usually means a hash commitment — the server still generates the cards, you just verify after the fact.
 
----
+Blockchain poker projects aren't much better. Most move card logic off-chain to a trusted oracle or MPC ceremony, then post results on-chain. The chain becomes an expensive settlement layer, not a game engine.
 
-## How FHE Works in This Game
+Cofhe Poker makes the chain the game engine. Card generation, hand evaluation, bot decisions, showdown comparison — all of it runs as encrypted computation through the Fhenix CoFHE threshold network. There is no trusted party. The contract processes `euint64` values it cannot read, and the CoFHE network reconstructs plaintext only for addresses with explicit `FHE.allow` permission.
+
+## Challenges I ran into
+
+**The 7-card evaluation problem.** Evaluating a Texas Hold'em hand means finding the best 5-card combination out of 7 cards. That's C(7,5) = 21 combinations. Evaluating all 21 in FHE would cost millions of gas and hundreds of operations per combination.
+
+Instead, I wrote a direct algorithm:
+- 21 pairwise rank comparisons for pair/trips/quads detection
+- 4 suits x 7 cards = 28 equality checks for flush detection
+- Bubble sort on encrypted ranks + sliding window for straight detection
+- Nested `FHE.select()` chains for hand type classification
+
+The result: `_evalHand7()` runs ~350 FHE operations and produces an encrypted score that encodes hand type, kicker hierarchy, and tiebreakers — all without ever decrypting a single card.
+
+**Showdown gas limits.** A full PvP showdown evaluates both players' 7-card hands and compares them. That's ~700 FHE operations consuming ~35M gas — dangerously close to Sepolia's 36M block gas limit. I split it into `computeShowdownP1()` and `computeShowdownP2()` as separate transactions.
+
+**FHE decrypt latency.** The CoFHE threshold network takes 15-30 seconds to reconstruct a decrypted value from key shares. Every card reveal, every showdown result, every bot decision involves this wait. I built the entire UI around async polling with `FHE.getDecryptResultSafe()` and visual feedback for each decrypt stage.
+
+**Card collision across groups.** Hole cards and community cards use separate random seeds. There's a small probability of duplicate cards between groups. Intra-group uniqueness is enforced via rejection, but cross-group collision remains a known limitation of the current FHE random approach.
+
+**The permit dance.** CoFHE requires an EIP-712 permit signature before decryption. This permit is per-contract, per-wallet, and expires. If the user switches wallets, changes contracts, or the permit expires mid-game, decryption silently fails. I built a singleton CoFHE client with automatic permit management, retry logic, and status indicators.
+
+## Technologies I used
+
+Solidity 0.8.25, Fhenix CoFHE (`@cofhe/sdk` v0.4, `@fhenixprotocol/cofhe-contracts`), React 18, TypeScript, Vite, Tailwind CSS 4, Framer Motion, wagmi v2 + viem, Zustand, Hardhat, Ethereum Sepolia
+
+## How we built it
+
+Started with 3-card poker vs bot — the simplest possible FHE poker. 3 cards, ~30 FHE operations for hand evaluation, one comparison for showdown. This proved the concept: encrypted card dealing and evaluation work on-chain.
+
+Then PvP. Added a lobby system with public/private tables, invite codes, and an on-chain friend list. Both players submit sealed play/fold decisions — neither knows what the other chose until the contract processes both.
+
+Then Texas Hold'em. The 7-card evaluation required a complete algorithmic redesign. `_evalHand5()` for flop (~120 ops), `_pairCount6()` for turn (~36 ops), `_pairCount7()` for river (~49 ops), and `_evalHand7()` for showdown (~200+ ops). The bot evaluates its hand strength at each street using progressively more complex FHE functions.
+
+Finally Hold'em PvP. This is where things got serious: dealer button rotation, dynamic min-raise, all-in with call capping and chip return, `FHE.eq()` for pot splitting on ties, block-based timeouts (50 blocks = ~10 min) with permissionless forfeit triggers, and EIP-712 signed action batching to reduce transaction count during betting rounds.
+
+## What we learned
+
+FHE can absolutely power a complete poker engine on-chain, but gas is the hard constraint. The 7-card evaluation can't brute-force all 21 five-card combinations — you need a direct algorithm. `FHE.randomEuint64()` works for card generation but it's not VRF — there's no verifiable randomness proof. The CoFHE threshold network adds real latency (15-30s per decrypt), and you can't hide that from the user — the UI has to make the wait feel intentional.
+
+Debugging encrypted cards is its own adventure. You can't log card values because they're ciphertext. You print `ctHash` values, track which handle maps to which card position, and hope the decrypt eventually comes back with a number between 0 and 51.
+
+## What's next for Cofhe Poker
+
+- Multi-player tables (3-9 seats) with `FHE.allow` per-seat privacy
+- Tournament mode with encrypted blind escalation via `FHE.mul`
+- Real token buy-ins (ERC-20) with encrypted chip conversion
+- Chainlink VRF integration for verifiable card randomness alongside FHE encryption
+- Spectator mode — watch live games, see community cards and pot, but never hole cards
+- Gas optimization for L2 deployment
+- Mobile-optimized responsive UI
+
+## Smart Contracts (Deployed on Sepolia)
+
+| Contract | Address | FHE Ops/Hand |
+|----------|---------|-------------|
+| `CofhePoker` | [`0x8D32...3470`](https://sepolia.etherscan.io/address/0x8D32d4B87aa3Db55Ac0Eae3DC2c2343CEd9F3470) | ~80 |
+| `CofhePokerPvP` | [`0x7662...247d`](https://sepolia.etherscan.io/address/0x76627a7A86C4Da6386f09b52cc8EC14C5EaC247d) | ~80 |
+| `CofheHoldem` | [`0xA01a...CEBe`](https://sepolia.etherscan.io/address/0xA01aDb97b1D1ad67a4295B8Ae0c525Affd74CEBe) | ~500 |
+| `CofheHoldemPvP` | [`0x309D...27e9`](https://sepolia.etherscan.io/address/0x309Dd767C98eb52C84ff44389A2066385b9C27e9) | ~700 |
+
+## FHE Operations Used
+
+| Operation | What it does in Cofhe Poker |
+|-----------|---------------------------|
+| `FHE.randomEuint64()` | Generate encrypted random seed for card dealing |
+| `FHE.asEuint64()` | Create encrypted card values and hand scores |
+| `FHE.add / sub / mul / div / rem` | Card ID mapping (`card/4` = rank, `card%4` = suit), score computation, pot math |
+| `FHE.gt / gte / eq / ne` | Hand comparison at showdown, pair detection, tie detection |
+| `FHE.min / max` | Clamp bets to stack size, resolve kickers |
+| `FHE.select` | Encrypted conditional logic — pair vs trips, flush vs straight branching |
+| `FHE.and / or / not` | Boolean hand type classification |
+| `FHE.allow / allowThis / allowPublic` | ACL: player-only cards, contract access, community card reveal |
+| `FHE.decrypt + getDecryptResultSafe` | Async threshold decryption for showdown results |
+
+## Architecture
 
 ```
-1. Card dealing    → FHE.randomEuint64() generates encrypted random seeds
-                     card = (seed + offset) % 52 — all in ciphertext
-
-2. ACL gating      → FHE.allow(card, playerAddress) — only YOU can decrypt
-                     FHE.allowPublic(card) — community cards become visible
-
-3. Hand evaluation → _evalHand7() computes pair count, flush, straight
-                     entirely on encrypted values (~350 FHE operations)
-
-4. Showdown        → FHE.gt(playerScore, botScore) — encrypted comparison
-                     FHE.eq() for tie detection
-
-5. Decryption      → CoFHE threshold network reconstructs plaintext
-                     from key shares — only for permitted addresses
++--------------+     wagmi/viem      +-------------------+
+|   React UI   | <-----------------> |  Sepolia Testnet   |
+|  (Vite/TS)   |                     |                    |
+|              |     EIP-712 sigs    |  CofhePoker        |
+|  Zustand     | -----------------> |  CofhePokerPvP     |
+|  state mgmt  |                     |  CofheHoldem       |
+|              |                     |  CofheHoldemPvP    |
++------+-------+                     +--------+-----------+
+       |                                      |
+       |  @cofhe/sdk                          | FHE.random / FHE.allow
+       |  (permits + decrypt)                 | FHE.gt / FHE.eq
+       |                                      |
+       +---------> +------------------+ <-----+
+                   |  CoFHE Threshold  |
+                   |  FHE Network      |
+                   |  (key shares)     |
+                   +------------------+
 ```
-
-### Privacy Guarantees
-
-| Data | Visibility |
-|------|-----------|
-| Your hole cards | Only you (after FHE.allow + permit) |
-| Opponent's cards | Hidden until showdown |
-| Community cards | Public after each round (FHE.allowPublic) |
-| Pot, bets, game state | Public (not sensitive) |
-| Hand scores | Never decrypted — only comparison result is revealed |
-
----
-
-## Technical Stack
-
-- **Blockchain**: Ethereum Sepolia testnet
-- **FHE**: Fhenix CoFHE SDK (`@cofhe/sdk` v0.4) — threshold FHE network
-- **Smart Contracts**: Solidity 0.8.25 + `@fhenixprotocol/cofhe-contracts`
-- **Frontend**: React 18 + TypeScript + Vite + Tailwind CSS
-- **Wallet**: wagmi v2 + viem (MetaMask, injected wallets)
-- **Animations**: Framer Motion
-- **State Management**: Zustand
-- **Deployment**: Vercel (frontend) + Hardhat (contracts)
-
----
-
-## Smart Contracts
-
-| Contract | Purpose | FHE Operations |
-|----------|---------|---------------|
-| `CofhePoker` | 3-Card Poker vs Bot | ~80 ops/hand |
-| `CofhePokerPvP` | 3-Card PvP (rooms, friends) | ~80 ops/hand |
-| `CofheHoldem` | Texas Hold'em vs Bot | ~500 ops/hand |
-| `CofheHoldemPvP` | Hold'em PvP (all-in, timeouts) | ~700 ops/hand |
-
-### Key Contract Features
-- **7-card best-of-7 evaluation**: direct FHE algorithm (no brute-force C(7,5))
-- **Dealer button rotation**: alternates each hand via `handCount % 2`
-- **All-in with side pot logic**: call capping, excess chip return
-- **On-chain timeout**: block-number based auto-forfeit (~10 min)
-- **Pot split on tie**: FHE.eq() detection
-- **3 independent random seeds**: prevents deduction of opponent cards
-- **EIP-712 signed batch actions**: `submitRound()` for reduced TX count
-
----
 
 ## Getting Started
 
 ### Prerequisites
+
 - Node.js 18+
-- MetaMask wallet
+- MetaMask or Rabby wallet
 - Sepolia ETH ([faucet](https://sepoliafaucet.com))
 
-### Install and Run
+### Run Locally
+
 ```bash
-git clone <repo>
-cd poker
+git clone https://github.com/barbos001/CofhePoker.git
+cd CofhePoker
 npm install
-cp .env.example .env   # configure your keys
+cp .env.example .env   # add your keys and contract addresses
 npm run dev             # http://localhost:3000
 ```
 
 ### Deploy Contracts
+
 ```bash
 npm run compile
 npx hardhat run scripts/deploy.cts --network eth-sepolia
-npx hardhat run scripts/deployHoldem.cts --network eth-sepolia
 npx hardhat run scripts/deployPvP.cts --network eth-sepolia
+npx hardhat run scripts/deployHoldem.cts --network eth-sepolia
 npx hardhat run scripts/deployHoldemPvP.cts --network eth-sepolia
 ```
 
 ### Environment Variables
-```env
-PRIVATE_KEY=0x...                        # deployer key (never committed)
-SEPOLIA_RPC_URL=https://...              # Sepolia RPC endpoint
-VITE_CONTRACT_ADDRESS=0x...              # 3-Card Poker contract
-VITE_PVP_CONTRACT_ADDRESS=0x...          # 3-Card PvP contract
-VITE_HOLDEM_CONTRACT_ADDRESS=0x...       # Hold'em contract
-VITE_HOLDEM_PVP_CONTRACT_ADDRESS=0x...   # Hold'em PvP contract
-```
 
----
+```env
+PRIVATE_KEY=0x...                        # deployer wallet (never commit)
+SEPOLIA_RPC_URL=https://...              # Sepolia RPC
+
+VITE_CONTRACT_ADDRESS=0x...              # CofhePoker
+VITE_PVP_CONTRACT_ADDRESS=0x...          # CofhePokerPvP
+VITE_HOLDEM_CONTRACT_ADDRESS=0x...       # CofheHoldem
+VITE_HOLDEM_PVP_CONTRACT_ADDRESS=0x...   # CofheHoldemPvP
+VITE_CHAIN_ID=11155111
+VITE_SEPOLIA_RPC_URL=https://...
+```
 
 ## Project Structure
 
 ```
 contracts/
-  CofhePoker.sol           3-Card Poker vs Bot
-  CofhePokerPvP.sol        3-Card PvP (rooms, friends, invites)
-  CofheHoldem.sol          Texas Hold'em vs Bot (4 rounds, check/bet/raise)
-  CofheHoldemPvP.sol       Texas Hold'em PvP (all-in, timeouts, EIP-712)
+  CofhePoker.sol              3-Card Poker vs Bot
+  CofhePokerPvP.sol           3-Card PvP (rooms, friends, invites)
+  CofheHoldem.sol             Texas Hold'em vs Bot
+  CofheHoldemPvP.sol          Hold'em PvP (all-in, timeouts, EIP-712)
+
+scripts/
+  deploy.cts                  Deploy CofhePoker
+  deployPvP.cts               Deploy CofhePokerPvP
+  deployHoldem.cts            Deploy CofheHoldem
+  deployHoldemPvP.cts         Deploy CofheHoldemPvP
+  test-flow.mjs               Automated PvP integration test
 
 src/
   components/
-    PlayHub.tsx             Unified game selector (mode + opponent + room links)
-    PlayTab.tsx             3-Card Poker game UI
-    HoldemTab.tsx           Hold'em game UI (5 community cards, 4 rounds)
-    HoldemPvPTab.tsx        Hold'em PvP (lobby, narrator, activity log)
-    PvPTab.tsx              3-Card PvP (lobby, friends, invites)
-    LandingPage.tsx         Landing page
+    PlayHub.tsx               Game mode selector
+    PlayTab.tsx               3-Card Poker UI
+    HoldemTab.tsx             Hold'em UI
+    HoldemPvPTab.tsx          Hold'em PvP (lobby, game, activity log)
+    PvPTab.tsx                3-Card PvP (lobby, friends, invites)
+    LandingPage.tsx           Landing page with animations
   hooks/
-    useGameActions.ts       3-Card on-chain game flow
-    useHoldemActions.ts     Hold'em on-chain game flow (4 rounds)
-    useCofhe.ts             CoFHE SDK initialization, permits, decryption
-    useGameGuards.ts        Pre-flight checks, turn timer, disconnect guard
-  lib/
-    poker.ts                3-card hand evaluation + display utilities
-    holdem.ts               5-card and 7-card (best of 7) evaluation
+    useGameActions.ts         3-Card on-chain game flow
+    useHoldemActions.ts       Hold'em on-chain game flow
+    useCofhe.ts               CoFHE SDK singleton, permits, decryption
   config/
-    contract.ts             3-Card ABI + address
-    contractHoldem.ts       Hold'em ABI + address
-    contractHoldemPvP.ts    Hold'em PvP ABI + address
+    contract.ts               ABI + address per contract
+  store/
+    useGameStore.ts           Zustand state management
 ```
 
----
+## Security
 
-## PvP Room Links
-
-Each room generates a shareable URL:
-
-| Type | URL Format |
-|------|-----------|
-| Public | `https://app.example.com/#/room/holdem/5` |
-| Private | `https://app.example.com/#/room/holdem/5:0xinvitecode` |
-
-Opening a room link auto-navigates to the game and joins the table. Private links include the invite code — only holders can join.
-
----
-
-## Expected User Experience
-
-1. Connect MetaMask on Sepolia
-2. Choose game mode (3-Card or Hold'em) and opponent (Bot or PvP)
-3. For PvP: create a room (public or private), share the link
-4. Cards are dealt via FHE — 15-30s for encrypted generation + decryption
-5. Make betting decisions (check, bet, raise, call, fold, all-in)
-6. Showdown computed entirely in FHE — winner determined on-chain
-7. Chips transferred automatically to the winner
-
----
+- All card data encrypted at rest and in transit — no plaintext on-chain
+- ACL-gated decryption via `FHE.allow` — only permitted addresses can decrypt
+- Three independent random seeds prevent cross-group card deduction
+- Block-based timeout enforcement prevents game stalling
+- EIP-712 typed signatures prevent action replay and impersonation
+- No private keys or secrets in source code — all loaded from `.env`
 
 ## Known Limitations
 
-- **FHE latency**: 15-30s per decrypt on testnet (CoFHE threshold network processing time)
-- **Gas costs**: Showdown evaluation ~17-35M gas (within Sepolia limits)
-- **Card collisions**: Small probability between card groups (intra-group always unique)
-- **No multi-table**: One active table per player
-- **Heads-up only**: PvP is 2-player (no multi-player tables)
+- FHE decrypt latency: 15-30 seconds on testnet
+- Showdown gas: ~35M (near Sepolia block limit)
+- Small probability of card collision between hole and community groups
+- One active table per player
+- Heads-up only (2 players max per table)
+- Testnet only — not audited for mainnet
 
----
+## Built For
 
-## Future Improvements
-
-- Multi-player tables (3-9 players)
-- Tournament mode with blind schedule
-- Verifiable Random Function (VRF) for card dealing
-- Off-chain action relay for gasless betting rounds
-- Mobile-optimized UI
-- Hand history with replay
-
----
+[Fhenix Buildathon 2026](https://fhenix.io) — demonstrating that Fully Homomorphic Encryption can power trustless, privacy-preserving games entirely on-chain.
 
 ## License
 

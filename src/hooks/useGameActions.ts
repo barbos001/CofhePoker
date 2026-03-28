@@ -51,7 +51,7 @@ export const useGameActions = () => {
   const store                    = useGameStore();
   const { address, isConnected } = useAccount();
   const publicClient             = usePublicClient();
-  const { decryptCard, decryptPublicCard } = useCofhe();
+  const { decryptCard, decryptPublicCard, ensurePermit } = useCofhe();
   const { writeContractAsync }   = useWriteContract();
 
   const contractDeployed = CONTRACT_ADDRESS !== '0x0000000000000000000000000000000000000000';
@@ -68,7 +68,12 @@ export const useGameActions = () => {
     const t0 = performance.now();
     const hash = await writeContractAsync(args);
     TX(`${fnName}() — tx sent: ${hash.slice(0, 14)}…`);
-    await publicClient!.waitForTransactionReceipt({ hash });
+    const TX_TIMEOUT = 60_000;
+    const receipt = await Promise.race([
+      publicClient!.waitForTransactionReceipt({ hash }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Transaction timed out (60s). Check Etherscan and retry.')), TX_TIMEOUT)),
+    ]);
+    void receipt;
     TX(`${fnName}() — confirmed in ${(performance.now() - t0).toFixed(0)}ms ✓`);
     return hash;
   }, [writeContractAsync, publicClient]);
@@ -251,6 +256,7 @@ export const useGameActions = () => {
     if (!isOnChain || !publicClient) return;
 
     try {
+      await ensurePermit();
       GAME('═══ NEW HAND ═══');
       store.setPlayState('dealing');
       store.setStatus('Creating poker table…', '#B366FF');
