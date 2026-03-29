@@ -567,11 +567,31 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
       LOG('Hand started');
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed';
-      // If TX failed but opponent already started — re-sync state from chain
-      if (msg.includes('Cannot start') || msg.includes('reverted')) {
-        addLog('Hand already started by opponent — syncing...');
-        await pollTableState();
-      } else {
+      LOG('startHand failed:', msg);
+
+      // Check actual on-chain state before deciding what to do
+      try {
+        const info = await readContract('getTableInfo', [BigInt(tableId)]) as [string, string, number, bigint, bigint, bigint, boolean, string];
+        const actualState = info[2];
+
+        if (actualState >= HoldemPvPState.PREFLOP && actualState <= HoldemPvPState.AWAITING_SHOWDOWN) {
+          // Game IS actually in progress (opponent started) — sync
+          addLog('Hand started by opponent — syncing...');
+          await pollTableState();
+        } else if (actualState === HoldemPvPState.OPEN) {
+          // Still waiting for opponent — go back to waiting, no error
+          setLobbyState('waiting');
+          setStatus('Waiting for opponent to join...');
+          addLog('Cannot start yet — waiting for opponent');
+        } else if (actualState === HoldemPvPState.BOTH_SEATED) {
+          // Both seated but startHand failed — retry once
+          addLog('Both seated — retrying start...');
+          setError('Start failed. Tap Start Hand to retry.');
+          setLobbyState('seated');
+        } else {
+          setError(msg);
+        }
+      } catch {
         setError(msg);
       }
     }
