@@ -65,6 +65,7 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
   const [narration, setNarration] = useState<{ text: string; key: number }[]>([]);
   const narrationKeyRef = useRef(0);
   const lastNarrationRef = useRef('');
+  const autoStartRef = useRef<(() => void) | null>(null);
 
   const addLog = useCallback((msg: string) => {
     // Dedup: skip if identical to last message
@@ -159,9 +160,17 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
         setLobbyState('waiting');
         setStatus('Waiting for opponent...');
       } else if (state === HoldemPvPState.BOTH_SEATED) {
-        if (lobbyState !== 'seated') addLog(`Opponent joined: ${truncAddr(opp)}`);
+        if (lobbyState !== 'seated') {
+          addLog(`Opponent joined: ${truncAddr(opp)}`);
+          addLog('Auto-starting hand...');
+          setLobbyState('seated');
+          setStatus('Opponent joined — starting hand...');
+          // Auto-start the hand via ref (handleStartHand defined later)
+          setTimeout(() => autoStartRef.current?.(), 500);
+          return;
+        }
         setLobbyState('seated');
-        setStatus('Opponent joined! Start the hand.');
+        setStatus('Both seated — tap Start Hand');
       } else if (state >= HoldemPvPState.PREFLOP && state <= HoldemPvPState.RIVER) {
         const rn = stateToRound(state);
         if (roundName !== rn) addLog(`Round: ${rn}`);
@@ -556,6 +565,9 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
     }
     setLoading(false);
   }, [tableId, writeAndWait, readContract, addLog, ensurePermit, refreshBalance, pollTableState]);
+
+  // Keep auto-start ref in sync
+  autoStartRef.current = handleStartHand;
 
   const handleLeave = useCallback(async () => {
     if (!tableId) return;
