@@ -67,6 +67,8 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
   const narrationKeyRef = useRef(0);
   const lastNarrationRef = useRef('');
   const autoStartRef = useRef<(() => void) | null>(null);
+  const waitingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [waitingCountdown, setWaitingCountdown] = useState<number | null>(null);
 
   const addLog = useCallback((msg: string) => {
     // Dedup: skip if identical to last message
@@ -220,6 +222,33 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
     pollRef.current = setInterval(pollTableState, 8000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [tableId, lobbyState, pollTableState]);
+
+  // 60-second lobby timeout — auto-leave if no opponent joins
+  useEffect(() => {
+    if (waitingTimerRef.current) { clearInterval(waitingTimerRef.current); waitingTimerRef.current = null; }
+    if (lobbyState !== 'waiting' || !tableId) { setWaitingCountdown(null); return; }
+
+    let remaining = 60;
+    setWaitingCountdown(remaining);
+    waitingTimerRef.current = setInterval(async () => {
+      remaining--;
+      setWaitingCountdown(remaining);
+      if (remaining <= 0) {
+        if (waitingTimerRef.current) clearInterval(waitingTimerRef.current);
+        waitingTimerRef.current = null;
+        setWaitingCountdown(null);
+        addLog('No opponent joined — leaving table');
+        try {
+          await writeAndWait('leaveTable', [BigInt(tableId)]);
+        } catch { /* may already be gone */ }
+        setTableId(null);
+        setLobbyState('idle');
+        setStatus('');
+        setError('Lobby timed out — no opponent joined within 60 seconds');
+      }
+    }, 1000);
+    return () => { if (waitingTimerRef.current) { clearInterval(waitingTimerRef.current); waitingTimerRef.current = null; } };
+  }, [lobbyState, tableId]);
 
   const refreshLobby = useCallback(async () => {
     if (!deployed || !publicClient) return;
@@ -960,11 +989,12 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
           </div>
         )}
 
-        <motion.p animate={{ opacity: [0.4, 1, 0.4] }} transition={{ duration: 2, repeat: Infinity }}
-          className="font-mono text-[10px] mt-2" style={{ color: 'var(--color-text-dark)' }}>
-          Polling every 4s...
-        </motion.p>
-        <button onClick={handleLeave} className="font-mono text-xs tracking-wider mt-2 hover:text-white transition-colors"
+        {waitingCountdown !== null && (
+          <div className="font-mono text-sm mt-2" style={{ color: waitingCountdown <= 10 ? 'var(--color-danger)' : 'var(--color-text-muted)' }}>
+            Auto-close in {waitingCountdown}s
+          </div>
+        )}
+        <button onClick={handleLeave} className="font-mono text-xs tracking-wider mt-3 hover:text-white transition-colors"
           style={{ color: 'var(--color-text-dark)' }}>CANCEL</button>
       </div>
     );
