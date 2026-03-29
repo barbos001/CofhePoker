@@ -413,20 +413,10 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
           const state = info[2];
 
           if (state === HoldemPvPState.OPEN) {
-            // Table still open — restore it instead of creating new
-            LOG(`Already have OPEN table #${existingSeat} — restoring`);
-            setTableId(existingSeat);
-            setLobbyState('waiting');
-            addLog(`Restored table #${existingSeat}`);
-            if (info[6]) { // isPrivate
-              try {
-                const code = await readContract('getInviteCode', [BigInt(existingSeat)]) as `0x${string}`;
-                setInviteCode(`${existingSeat}:${code}`);
-                setIsPrivate(true);
-              } catch { /* */ }
-            }
-            setLoading(false);
-            return;
+            // Old empty table — leave it first, then create fresh
+            LOG(`Leaving stale OPEN table #${existingSeat}`);
+            addLog(`Leaving old table #${existingSeat}...`);
+            await writeAndWait('leaveTable', [BigInt(existingSeat)]);
           }
 
           if (state >= HoldemPvPState.PREFLOP && state <= HoldemPvPState.AWAITING_SHOWDOWN) {
