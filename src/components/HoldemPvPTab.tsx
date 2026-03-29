@@ -1024,9 +1024,14 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
       <div className="flex w-full max-w-[1100px] mx-auto py-6 px-4 gap-6">
         {/* Main game area */}
         <div className="flex flex-col items-center flex-1 gap-4">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 w-full">
           <h2 className="font-clash text-xl" style={{ color: '#00BFFF' }}>Table #{tableId}</h2>
           <span className="font-mono text-xs px-3 py-1 rounded-full" style={{ background: 'rgba(0,191,255,0.08)', color: '#00BFFF' }}>{roundName || 'Showdown'}</span>
+          <button onClick={handleLeave}
+            className="ml-auto h-8 px-4 rounded-full font-mono text-[11px] tracking-wider uppercase hover:bg-red-500/20 transition-all"
+            style={{ color: 'var(--color-danger)', border: '1px solid rgba(255,59,59,0.25)' }}>
+            LEAVE
+          </button>
         </div>
 
         {/* Opponent cards */}
@@ -1297,12 +1302,6 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
           </button>
         )}
 
-        {/* Leave — always visible */}
-        <button onClick={handleLeave}
-          className="h-9 px-5 rounded-full font-mono text-xs tracking-wider uppercase mt-2 hover:bg-red-500/20 transition-all"
-          style={{ color: 'var(--color-danger)', border: '1px solid rgba(255,59,59,0.25)' }}>
-          LEAVE TABLE
-        </button>
 
         {/* Activity Log */}
         {activityLog.length > 0 && (
@@ -1356,9 +1355,6 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
           </div>
         )}
 
-        {/* Leave */}
-        <button onClick={handleFold} className="font-mono text-[10px] tracking-wider mt-2 hover:text-white transition-colors"
-          style={{ color: 'var(--color-text-dark)' }}>FOLD & LEAVE</button>
         </div>
 
         {/* ── Narrator Panel (right side) ── */}
