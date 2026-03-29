@@ -1157,15 +1157,10 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
               exit={{ opacity: 0 }}
               className="fixed inset-0 pointer-events-none z-30 flex items-center justify-center"
             >
-              {/* Scanline */}
-              <motion.div className="absolute left-0 right-0 h-[2px]"
-                style={{ background: 'linear-gradient(90deg, transparent, rgba(179,102,255,0.8), transparent)', boxShadow: '0 0 20px rgba(179,102,255,0.5)' }}
-                animate={{ top: ['0%', '100%', '0%'] }}
-                transition={{ duration: 2.5, repeat: Infinity, ease: 'linear' }} />
               {/* Pulse overlay */}
               <motion.div className="absolute inset-0"
                 style={{ background: 'rgba(179,102,255,0.02)' }}
-                animate={{ opacity: [0, 0.5, 0] }}
+                animate={{ opacity: [0, 0.3, 0] }}
                 transition={{ duration: 1.5, repeat: Infinity }} />
             </motion.div>
           )}
@@ -1289,6 +1284,13 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
             ⏱ CLAIM TIMEOUT
           </button>
         )}
+
+        {/* Leave — always visible, forfeit if game active */}
+        <button onClick={handleLeave} disabled={loading}
+          className="font-mono text-[11px] tracking-wider mt-1 hover:text-red-400 transition-colors disabled:opacity-30"
+          style={{ color: 'var(--color-text-dark)' }}>
+          LEAVE TABLE (forfeit)
+        </button>
 
         {/* Activity Log */}
         {activityLog.length > 0 && (
