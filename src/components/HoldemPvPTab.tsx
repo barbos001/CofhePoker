@@ -996,11 +996,22 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
         <div className="text-4xl">&#9876;</div>
         <h2 className="font-clash text-2xl" style={{ color: 'var(--color-success)' }}>Opponent Found!</h2>
         {opponent && <p className="font-mono text-xs" style={{ color: 'var(--color-text-muted)' }}>{truncAddr(opponent)}</p>}
-        <button onClick={handleStartHand} disabled={loading}
-          className="h-12 px-10 rounded-full font-mono text-sm font-bold tracking-widest uppercase disabled:opacity-50"
-          style={{ background: '#00BFFF', color: '#000' }}>
-          {loading ? 'STARTING...' : 'START HAND'}
-        </button>
+        {isCreator ? (
+          <button onClick={handleStartHand} disabled={loading}
+            className="h-12 px-10 rounded-full font-mono text-sm font-bold tracking-widest uppercase disabled:opacity-50"
+            style={{ background: '#00BFFF', color: '#000' }}>
+            {loading ? 'STARTING...' : 'START HAND'}
+          </button>
+        ) : (
+          <motion.p
+            animate={{ opacity: [0.4, 1, 0.4] }}
+            transition={{ duration: 2, repeat: Infinity }}
+            className="font-mono text-sm"
+            style={{ color: 'var(--color-text-muted)' }}
+          >
+            Waiting for host to start...
+          </motion.p>
+        )}
         <button onClick={handleLeave} className="font-mono text-xs tracking-wider mt-2 hover:text-white transition-colors"
           style={{ color: 'var(--color-text-dark)' }}>LEAVE TABLE</button>
       </div>
