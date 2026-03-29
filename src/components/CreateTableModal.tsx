@@ -6,7 +6,7 @@ const BUY_IN_OPTIONS = [10, 25, 50, 100];
 interface Props {
   open: boolean;
   onClose: () => void;
-  onCreate: (buyIn: number, isPrivate: boolean) => Promise<void>;
+  onCreate: (buyIn: number, isPrivate: boolean) => Promise<number | void>;
 }
 
 export const CreateTableModal = ({ open, onClose, onCreate }: Props) => {

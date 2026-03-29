@@ -77,7 +77,7 @@ export const useLobby = () => {
     const hash = await writeContractAsync({
       address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
       functionName: 'createPvPTable', args: [BigInt(buyIn), isPrivate],
-    });
+    } as any);
     await publicClient!.waitForTransactionReceipt({ hash });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -104,7 +104,7 @@ export const useLobby = () => {
     const hash = await writeContractAsync({
       address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
       functionName: 'joinTable', args: [BigInt(tableId)],
-    });
+    } as any);
     await publicClient!.waitForTransactionReceipt({ hash });
     LOG(`Joined table #${tableId} ✓`);
 
@@ -121,7 +121,7 @@ export const useLobby = () => {
     const hash = await writeContractAsync({
       address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
       functionName: 'joinByInviteCode', args: [BigInt(tableId), code],
-    });
+    } as any);
     await publicClient!.waitForTransactionReceipt({ hash });
 
     pvpStore.setTableId(tableId);
@@ -136,7 +136,7 @@ export const useLobby = () => {
     const hash = await writeContractAsync({
       address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
       functionName: 'leaveTable', args: [BigInt(pvpStore.tableId)],
-    });
+    } as any);
     await publicClient!.waitForTransactionReceipt({ hash });
     pvpStore.resetToIdle();
     await refresh();

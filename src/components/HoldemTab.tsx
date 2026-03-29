@@ -733,7 +733,7 @@ export const HoldemTab = () => {
                     </motion.div>
                   );
                 }
-                if (shouldShow || (playState !== 'lobby' && playState !== 'result' && i < 3)) {
+                if (shouldShow || ((playState as string) !== 'lobby' && playState !== 'result' && i < 3)) {
                   return (
                     <motion.div key={i} initial={{ opacity: 0 }} animate={{ opacity: 0.3 }} transition={{ delay: i * 0.1 }}>
                       <Card state="faceDown" />

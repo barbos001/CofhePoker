@@ -23,7 +23,7 @@ export const useInvites = () => {
     const hash = await writeContractAsync({
       address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
       functionName: 'sendGameInvite', args: [to as `0x${string}`, BigInt(tableId)],
-    });
+    } as any);
     await publicClient!.waitForTransactionReceipt({ hash });
     store.addOutgoing({ to, tableId });
     LOG('Invite sent ✓');
@@ -36,7 +36,7 @@ export const useInvites = () => {
     const hash = await writeContractAsync({
       address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
       functionName: 'acceptGameInvite', args: [from as `0x${string}`],
-    });
+    } as any);
     await publicClient!.waitForTransactionReceipt({ hash });
 
     const invite = store.incoming.find(i => i.from === from);
@@ -57,7 +57,7 @@ export const useInvites = () => {
     const hash = await writeContractAsync({
       address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
       functionName: 'declineGameInvite', args: [from as `0x${string}`],
-    });
+    } as any);
     await publicClient!.waitForTransactionReceipt({ hash });
     store.removeIncoming(from);
     LOG('Invite declined');

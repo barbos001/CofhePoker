@@ -57,7 +57,7 @@ export const useFriends = () => {
     const hash = await writeContractAsync({
       address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
       functionName: 'sendFriendRequest', args: [to as `0x${string}`],
-    });
+    } as any);
     await publicClient!.waitForTransactionReceipt({ hash });
     store.addOutgoingRequest(to);
     LOG('Friend request sent ✓');
@@ -70,7 +70,7 @@ export const useFriends = () => {
     const hash = await writeContractAsync({
       address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
       functionName: 'acceptFriendRequest', args: [from as `0x${string}`],
-    });
+    } as any);
     await publicClient!.waitForTransactionReceipt({ hash });
     store.removeIncomingRequest(from);
     store.addFriend({ address: from, isOnline: true, inGame: false });
@@ -84,7 +84,7 @@ export const useFriends = () => {
     const hash = await writeContractAsync({
       address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
       functionName: 'removeFriend', args: [friend as `0x${string}`],
-    });
+    } as any);
     await publicClient!.waitForTransactionReceipt({ hash });
     store.removeFriend(friend);
     LOG('Friend removed ✓');

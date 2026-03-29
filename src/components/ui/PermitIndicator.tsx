@@ -212,7 +212,7 @@ export const PermitWarningBanner = () => {
                 boxShadow: '0 0 20px rgba(179,102,255,0.4)',
               }}
             >
-              {signing || permitStatus === 'signing' ? 'SIGNING...' : 'SIGN PERMIT'}
+              {signing || (permitStatus as string) === 'signing' ? 'SIGNING...' : 'SIGN PERMIT'}
             </button>
           </div>
         </motion.div>

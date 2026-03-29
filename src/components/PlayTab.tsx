@@ -998,7 +998,7 @@ export const PlayTab = () => {
       <PermitWarningBanner />
 
       {/* Phase tracker — visible during active game */}
-      {playState !== 'lobby' && (
+      {(playState as string) !== 'lobby' && (
         <div className="mb-4 w-full flex justify-center">
           <PhaseTracker playState={playState} />
         </div>
