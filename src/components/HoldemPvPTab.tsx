@@ -44,6 +44,7 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
   const [inviteCode, setInviteCode] = useState(''); // full invite string "tableId:code"
   const [joinInput, setJoinInput] = useState('');  // single input for paste
   const [opponent, setOpponent] = useState('');
+  const [isCreator, setIsCreator] = useState(false);
   const [isMyTurn, setIsMyTurn] = useState(false);
   const [myCards, setMyCards] = useState<number[]>([]);
   const [oppCards, setOppCards] = useState<number[]>([]);
@@ -124,8 +125,10 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
       const [p1, p2, state, potVal, , , , nextToAct] = info;
       setPot(Number(potVal));
 
-      const opp = p1.toLowerCase() === address.toLowerCase() ? p2 : p1;
+      const iAmP1 = p1.toLowerCase() === address.toLowerCase();
+      const opp = iAmP1 ? p2 : p1;
       if (opp !== '0x0000000000000000000000000000000000000000') setOpponent(opp);
+      if (lobbyState === 'idle' || lobbyState === 'waiting') setIsCreator(iAmP1);
 
       const myTurn = nextToAct.toLowerCase() === address.toLowerCase();
       setIsMyTurn(myTurn);
@@ -162,15 +165,19 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
       } else if (state === HoldemPvPState.BOTH_SEATED) {
         if (lobbyState !== 'seated') {
           addLog(`Opponent joined: ${truncAddr(opp)}`);
-          addLog('Auto-starting hand...');
           setLobbyState('seated');
-          setStatus('Opponent joined — starting hand...');
-          // Auto-start the hand via ref (handleStartHand defined later)
-          setTimeout(() => autoStartRef.current?.(), 500);
+          if (iAmP1) {
+            // Only creator (P1) auto-starts
+            addLog('Auto-starting hand...');
+            setStatus('Opponent joined — starting hand...');
+            setTimeout(() => autoStartRef.current?.(), 500);
+          } else {
+            setStatus('Waiting for host to start the hand...');
+          }
           return;
         }
         setLobbyState('seated');
-        setStatus('Both seated — tap Start Hand');
+        setStatus(iAmP1 ? 'Both seated — starting...' : 'Waiting for host to start...');
       } else if (state >= HoldemPvPState.PREFLOP && state <= HoldemPvPState.RIVER) {
         const rn = stateToRound(state);
         if (roundName !== rn) addLog(`Round: ${rn}`);
@@ -428,6 +435,7 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
       if (seat === 0) { setError('Table creation failed'); setLoading(false); return; }
 
       setTableId(seat);
+      setIsCreator(true);
       setLobbyState('waiting');
       addLog(`Table #${seat} created (${isPrivate ? 'private' : 'public'})`);
 
@@ -469,6 +477,7 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
 
       await writeAndWait('joinTable', [BigInt(id)]);
       setTableId(id);
+      setIsCreator(false);
       setLobbyState('seated');
       LOG(`Joined table #${id}`);
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
