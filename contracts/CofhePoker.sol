@@ -9,9 +9,7 @@ import "@fhenixprotocol/cofhe-contracts/FHE.sol";
 ///         can see a player's cards. Only the player can decrypt via a wallet permit.
 contract CofhePoker {
 
-    // ────────────────────────────────────────────────────────────────
     //  State types
-    // ────────────────────────────────────────────────────────────────
 
     enum GameState {
         WAITING,           // table exists, no active hand
@@ -43,9 +41,7 @@ contract CofhePoker {
         bytes32  showdownDecryptHandle;
     }
 
-    // ────────────────────────────────────────────────────────────────
     //  Storage
-    // ────────────────────────────────────────────────────────────────
 
     mapping(uint256 => Table) public tables;
     mapping(uint256 => Hand)  internal hands;
@@ -56,9 +52,7 @@ contract CofhePoker {
     uint256 public constant ANTE           = 10;
     uint256 public constant INITIAL_BALANCE = 1000;
 
-    // ────────────────────────────────────────────────────────────────
     //  Events
-    // ────────────────────────────────────────────────────────────────
 
     event TableCreated(uint256 indexed tableId, address player);
     event HandStarted(uint256 indexed tableId, uint256 handId);
@@ -66,9 +60,7 @@ contract CofhePoker {
     event BotAction(uint256 indexed tableId, string action);
     event HandComplete(uint256 indexed tableId, address winner, uint256 pot);
 
-    // ────────────────────────────────────────────────────────────────
     //  Modifiers
-    // ────────────────────────────────────────────────────────────────
 
     modifier onlyPlayer(uint256 tableId) {
         require(tables[tableId].player == msg.sender, "Not your table");
@@ -80,9 +72,7 @@ contract CofhePoker {
         _;
     }
 
-    // ────────────────────────────────────────────────────────────────
     //  Public / External actions
-    // ────────────────────────────────────────────────────────────────
 
     /// @notice Create a new PvE table. Initialises virtual chip balance if first time.
     function createTable() external returns (uint256 tableId) {
@@ -231,9 +221,7 @@ contract CofhePoker {
         emit HandComplete(tableId, h.winner, t.pot);
     }
 
-    // ────────────────────────────────────────────────────────────────
     //  View helpers
-    // ────────────────────────────────────────────────────────────────
 
     /// @notice Returns the ctHash (underlying uint256) of each player card.
     ///         The player calls cofheClient.decryptForView(ctHash, FheTypes.Uint64).
@@ -306,9 +294,7 @@ contract CofhePoker {
         return ready;
     }
 
-    // ────────────────────────────────────────────────────────────────
     //  Internal FHE logic
-    // ────────────────────────────────────────────────────────────────
 
     /// @dev Generate 6 encrypted cards (3 per player).
     ///      Uses a random 64-bit seed + per-card salt to derive each card.
@@ -352,7 +338,6 @@ contract CofhePoker {
     ///
     ///  FHE operations used: div, rem, min, max, add, sub, eq, or, and, not, select.
     function _evaluateHand(euint64[3] storage cards) internal returns (euint64) {
-        // ── Extract rank (0–12) and suit (0–3) ──
         euint64 r0 = FHE.div(cards[0], FHE.asEuint64(4));
         euint64 r1 = FHE.div(cards[1], FHE.asEuint64(4));
         euint64 r2 = FHE.div(cards[2], FHE.asEuint64(4));
@@ -361,7 +346,6 @@ contract CofhePoker {
         euint64 s1 = FHE.rem(cards[1], FHE.asEuint64(4));
         euint64 s2 = FHE.rem(cards[2], FHE.asEuint64(4));
 
-        // ── Sort ranks into low ≤ mid ≤ high ──
         euint64 minAB = FHE.min(r0, r1);
         euint64 maxAB = FHE.max(r0, r1);
         euint64 low   = FHE.min(minAB, r2);
@@ -370,7 +354,6 @@ contract CofhePoker {
         euint64 sum3  = FHE.add(FHE.add(r0, r1), r2);
         euint64 mid   = FHE.sub(FHE.sub(sum3, low), high);
 
-        // ── Hand type checks ──
         // Pair: low==mid OR mid==high
         ebool hasPair  = FHE.or(FHE.eq(low, mid), FHE.eq(mid, high));
         // Trips: low==mid AND mid==high
@@ -383,7 +366,6 @@ contract CofhePoker {
         // Straight flush: straight AND flush
         ebool isSF       = FHE.and(isStraight, isFlush);
 
-        // ── Score via nested FHE.select ──
         euint64 score = FHE.select(
             isSF,
             FHE.add(FHE.asEuint64(500), high),

@@ -72,7 +72,6 @@ async function printState(tableId) {
   return info;
 }
 
-// ── MAIN ──
 async function main() {
   log('INIT', `Player 1: ${acct1.address}`);
   log('INIT', `Player 2: ${acct2.address}`);

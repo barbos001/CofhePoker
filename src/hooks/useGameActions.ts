@@ -11,7 +11,6 @@ import { useCofhe } from './useCofhe';
 import { sleep } from '@/lib/utils';
 import { evaluateHand, getCardData } from '@/lib/poker';
 
-// ── Logging helpers ──────────────────────────────────────────────────
 const TX  = (...args: unknown[]) =>
   console.log('%c[TX]',   'color:#39FF14;font-weight:bold', ...args);
 const GAME = (...args: unknown[]) =>
@@ -19,7 +18,6 @@ const GAME = (...args: unknown[]) =>
 const POLL = (...args: unknown[]) =>
   console.log('%c[POLL]', 'color:#888;font-weight:bold',    ...args);
 
-// ── Polling helper ───────────────────────────────────────────────────
 const POLL_MS  = 3_000;
 const MAX_POLLS = 40;   // ~2 min
 
@@ -46,7 +44,6 @@ async function pollUntilTrue(
   return false;
 }
 
-// ── Hook ─────────────────────────────────────────────────────────────
 export const useGameActions = () => {
   const store                    = useGameStore();
   const { address, isConnected } = useAccount();
@@ -78,7 +75,6 @@ export const useGameActions = () => {
     return hash;
   }, [writeContractAsync, publicClient]);
 
-  // ── Helpers ──────────────────────────────────────────────────────
 
   const getChainTableId = useCallback(async (): Promise<bigint> => {
     if (!publicClient) throw new Error('No public client');
@@ -105,7 +101,6 @@ export const useGameActions = () => {
     return n;
   }, [publicClient, address]);
 
-  // ── _finishHand (must be declared BEFORE play / fold) ────────────
   const _finishHand = useCallback(async (
     tableId: bigint,
     reason: 'fold' | 'botFolded' | 'showdown',
@@ -180,7 +175,6 @@ export const useGameActions = () => {
     store.finishHand({ result, delta, desc, pot: potNum, balance: newBalance, txHash, botCards });
   }, [publicClient, address, store, readBalance, decryptPublicCard]);
 
-  // ── Helper: check on-chain table state ─────────────────────────
   const getTableState = useCallback(async (tableId: bigint): Promise<number> => {
     if (!publicClient) return -1;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -192,7 +186,6 @@ export const useGameActions = () => {
     return state;
   }, [publicClient, address]);
 
-  // ── Helper: fold a stuck hand on-chain ────────────────────────
   const foldStuckHand = useCallback(async (tableId: bigint): Promise<boolean> => {
     try {
       GAME(`Folding stuck hand on table #${tableId}…`);
@@ -210,7 +203,6 @@ export const useGameActions = () => {
     }
   }, [store, writeAndWait, readBalance]);
 
-  // ── _decryptAndReveal — decrypt ctHashes and show cards ────────
   const _decryptAndReveal = useCallback(async (ctHashes: [bigint, bigint, bigint]) => {
     store.setPlayState('decrypting');
     store.setStatus('Decrypting your cards…', '#B366FF');
@@ -231,7 +223,6 @@ export const useGameActions = () => {
     GAME('All cards decrypted — player turn');
   }, [store, decryptCard]);
 
-  // ── retryDecrypt — retry after FHE failure ────────────────────
   const retryDecrypt = useCallback(async () => {
     if (!pendingCtHashes.current) {
       GAME('retryDecrypt called but no pending ctHashes');
@@ -251,7 +242,6 @@ export const useGameActions = () => {
     }
   }, [_decryptAndReveal, store]);
 
-  // ── startHand ───────────────────────────────────────────────────
   const startHand = useCallback(async () => {
     if (!isOnChain || !publicClient) return;
 
@@ -357,7 +347,6 @@ export const useGameActions = () => {
     }
   }, [isOnChain, store, writeAndWait, publicClient, getChainTableId, readBalance, _decryptAndReveal, address, getTableState, foldStuckHand]);
 
-  // ── play ────────────────────────────────────────────────────────
   const play = useCallback(async () => {
     if (!isOnChain) return;
 
@@ -451,7 +440,6 @@ export const useGameActions = () => {
     }
   }, [isOnChain, store, writeAndWait, publicClient, _finishHand, address]);
 
-  // ── fold ────────────────────────────────────────────────────────
   const fold = useCallback(async () => {
     if (!isOnChain) return;
 

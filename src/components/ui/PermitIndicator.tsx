@@ -3,7 +3,6 @@ import { useGameStore, PermitState } from '@/store/useGameStore';
 import { useState, useCallback } from 'react';
 import { useCofhe } from '@/hooks/useCofhe';
 
-// ── Config per state ──────────────────────────────────────────────────
 const STATE_CONFIG: Record<PermitState, {
   label: string;
   shortLabel: string;
@@ -76,7 +75,6 @@ const STATE_CONFIG: Record<PermitState, {
   },
 };
 
-// ── Hook: sign permit directly ────────────────────────────────────────
 const useSignPermit = () => {
   const { ensurePermit, isReady } = useCofhe();
   const { permitStatus } = useGameStore();
@@ -96,7 +94,6 @@ const useSignPermit = () => {
   return { signPermit, signing, canSign: isReady && permitStatus !== 'active' && permitStatus !== 'signing' };
 };
 
-// ── Compact badge (TopBar / BottomTabBar) ─────────────────────────────
 export const PermitBadge = ({ className }: { className?: string }) => {
   const { permitStatus } = useGameStore();
   const { signPermit, canSign } = useSignPermit();
@@ -137,7 +134,6 @@ export const PermitBadge = ({ className }: { className?: string }) => {
   );
 };
 
-// ── Dot-only indicator (ultra compact, for mobile bottom bar) ─────────
 export const PermitDot = () => {
   const { permitStatus } = useGameStore();
   const { signPermit, canSign } = useSignPermit();
@@ -158,7 +154,6 @@ export const PermitDot = () => {
   );
 };
 
-// ── Warning banner (PlayTab/HoldemTab, blocks game when no permit) ───
 export const PermitWarningBanner = () => {
   const { permitStatus, permitError } = useGameStore();
   const { signPermit, canSign, signing } = useSignPermit();
@@ -221,7 +216,6 @@ export const PermitWarningBanner = () => {
   );
 };
 
-// ── Expiring soon toast (appears briefly when permit is about to expire) ─
 export const PermitExpiryToast = () => {
   const { permitStatus } = useGameStore();
   const { signPermit, canSign } = useSignPermit();

@@ -33,18 +33,15 @@ interface FinishHandPayload {
 }
 
 interface GameStore {
-  // ── Global UI ──────────────────────────────────────────────────────
   appState:    AppState;
   activeTab:   Tab;
   setAppState: (state: AppState) => void;
   setActiveTab:(tab: Tab) => void;
 
-  // ── Wallet ─────────────────────────────────────────────────────────
   address:       string | null;
   setAddress:    (addr: string | null) => void;
   connectWallet: () => Promise<void>;
 
-  // ── FHE Permit ───────────────────────────────────────────────────
   permitStatus:    PermitState;
   permitError:     string | null;
   permitExpiresAt: number | null;
@@ -52,11 +49,9 @@ interface GameStore {
   setPermitError:  (e: string | null) => void;
   setPermitExpiry: (t: number | null) => void;
 
-  // ── Chain state ────────────────────────────────────────────────────
   tableId:    number | null;
   setTableId: (id: number | null) => void;
 
-  // ── Game ───────────────────────────────────────────────────────────
   playState:       PlayState;
   statusMsg:       { text: string; color: string };
   ante:            number;
@@ -74,7 +69,6 @@ interface GameStore {
   handResult:      'WON' | 'LOST' | 'FOLD' | 'PUSH' | null;
   lastPayout:      PayoutResult | null;
 
-  // ── Setters ──────────────────────────────────────────────────────
   setPlayState:       (s: PlayState) => void;
   setStatus:          (text: string, color: string) => void;
   setBalance:         (n: number) => void;
@@ -94,7 +88,6 @@ interface GameStore {
 const ANTE = 10;
 
 export const useGameStore = create<GameStore>()(persist((set, get) => ({
-  // ── Initial state ──────────────────────────────────────────────────
   appState:  'landing',
   activeTab: 'play',
   setAppState:  (state) => set({ appState: state }),
@@ -136,7 +129,6 @@ export const useGameStore = create<GameStore>()(persist((set, get) => ({
   handResult:   null,
   lastPayout:   null,
 
-  // ── Setters ────────────────────────────────────────────────────────
   setPlayState:   (s)          => set({ playState: s }),
   setStatus:      (text, color) => set({ statusMsg: { text, color } }),
   setBalance:     (n)          => set({ balance: n }),

@@ -10,7 +10,6 @@ type GameMode = '3card' | 'holdem' | null;
 type Opponent = 'bot' | 'pvp' | null;
 type Step = 'mode' | 'opponent' | 'game';
 
-// ── URL hash routing for room links ──────────────────────────────────
 // Format: #/room/{gameType}/{tableId}          (public)
 //         #/room/{gameType}/{tableId}:{code}   (private)
 // Example: #/room/holdem/5
@@ -33,7 +32,6 @@ export function buildRoomUrl(gameType: '3card' | 'holdem', tableId: number, code
   return base + fragment;
 }
 
-// ── Mode Selection (Step 1) ─────────────────────────────────────────────
 const ModeCard = ({
   title, subtitle, lines, accent, onClick,
 }: {
@@ -108,7 +106,6 @@ const ModeSelect = ({ onSelect }: { onSelect: (m: '3card' | 'holdem') => void })
   </div>
 );
 
-// ── Opponent Selection (Step 2) ─────────────────────────────────────────
 const OpponentSelect = ({
   mode, onSelect, onBack,
 }: {
@@ -168,7 +165,6 @@ const OpponentSelect = ({
   );
 };
 
-// ── Breadcrumb for game screens ─────────────────────────────────────────
 const GameBreadcrumb = ({
   mode, opponent, onBack,
 }: {
@@ -204,7 +200,6 @@ const GameBreadcrumb = ({
   );
 };
 
-// ── Helpers for browser history ──────────────────────────────────────────
 function getStep(mode: GameMode, opponent: Opponent): Step {
   if (!mode) return 'mode';
   if (!opponent) return 'opponent';
@@ -217,7 +212,6 @@ function pushPlayState(mode: GameMode, opponent: Opponent) {
   history.pushState(state, '', '');
 }
 
-// ── Main PlayHub ────────────────────────────────────────────────────────
 export const PlayHub = () => {
   const { playState, activeTab } = useGameStore();
   const [mode, setMode] = useState<GameMode>(null);
@@ -243,7 +237,6 @@ export const PlayHub = () => {
     prevTabRef.current = activeTab;
   }, [activeTab, isInGame]);
 
-  // ── Browser back button handler ──
   useEffect(() => {
     const handler = (e: PopStateEvent) => {
       if (isInGame) {
@@ -274,7 +267,6 @@ export const PlayHub = () => {
     return () => window.removeEventListener('popstate', handler);
   }, [isInGame, mode, opponent]);
 
-  // ── Parse URL hash on mount (room links) ──
   const [roomLink, setRoomLink] = useState<{ gameType: '3card' | 'holdem'; tableId: string; code?: string } | null>(null);
 
   useEffect(() => {

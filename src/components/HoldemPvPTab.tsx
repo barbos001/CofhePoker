@@ -62,7 +62,6 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
   const pollRef = useRef<ReturnType<typeof setInterval>>();
   const logEndRef = useRef<HTMLDivElement>(null);
 
-  // ── Narrator state (must be at top level, not inside conditional render) ──
   const [narration, setNarration] = useState<{ text: string; key: number }[]>([]);
   const narrationKeyRef = useRef(0);
   const lastNarrationRef = useRef('');
@@ -86,7 +85,6 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
     } as any);
   }, [publicClient, address]);
 
-  // ── Refresh on-chain balance ──
   const refreshBalance = useCallback(async () => {
     try {
       const bal = Number(await readContract('getBalance') as bigint);
@@ -108,7 +106,6 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
     return hash;
   }, [writeContractAsync, publicClient]);
 
-  // ── State names ──
   const stateToRound = (s: number): string => {
     switch (s) {
       case HoldemPvPState.PREFLOP: return 'Pre-flop';
@@ -119,7 +116,6 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
     }
   };
 
-  // ── Poll table state (used at every stage) ──
   const pollTableState = useCallback(async () => {
     if (!deployed || !publicClient || !tableId || !address) return;
     try {
@@ -199,7 +195,6 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
     }
   }, [deployed, publicClient, tableId, address, readContract, lobbyState, decryptPublicCard]);
 
-  // ── Start/stop polling based on lobby state ──
   useEffect(() => {
     if (pollRef.current) clearInterval(pollRef.current);
     if (!tableId || lobbyState === 'idle') return;
@@ -210,7 +205,6 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [tableId, lobbyState, pollTableState]);
 
-  // ── Load lobby ──
   const refreshLobby = useCallback(async () => {
     if (!deployed || !publicClient) return;
     try {
@@ -234,7 +228,6 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
     }
   }, [lobbyState, refreshLobby]);
 
-  // ── Check if already seated on mount + refresh balance ──
   useEffect(() => {
     if (!deployed || !publicClient || !address) return;
     refreshBalance();
@@ -260,7 +253,6 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
     })();
   }, [deployed, publicClient, address, readContract]);
 
-  // ── Auto-join from room link ──
   const roomLinkHandled = useRef(false);
   useEffect(() => {
     if (!roomLink || roomLinkHandled.current || !deployed || !publicClient || !address) return;
@@ -302,7 +294,6 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
   const decryptRetryCount = useRef(0);
   const MAX_DECRYPT_RETRIES = 3;
 
-  // ── Decrypt my cards when entering playing state ──
   useEffect(() => {
     if (lobbyState !== 'playing' || !tableId || myCards.length > 0 || decryptingCards || !cofheReady) return;
     if (decryptRetryCount.current >= MAX_DECRYPT_RETRIES) {
@@ -335,7 +326,6 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
     })();
   }, [lobbyState, tableId, myCards.length, decryptingCards, cofheReady, readContract, decryptCard]);
 
-  // ── Decrypt community cards when round advances ──
   const prevRound = useRef('');
   const [decryptingCommunity, setDecryptingCommunity] = useState(false);
   useEffect(() => {
@@ -364,7 +354,6 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
     })();
   }, [roundName, tableId, communityCards.length, decryptingCommunity, readContract, decryptPublicCard]);
 
-  // ── Actions ──
   const handleCreate = useCallback(async () => {
     if (!deployed) { setError('Contract not deployed'); return; }
     setLoading(true); setError('');
@@ -610,7 +599,6 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
     actingRef.current = false;
   }, [tableId, writeAndWait, pollTableState]);
 
-  // ── Showdown flow ──
   const handleShowdown = useCallback(async () => {
     if (!tableId) return;
     setLoading(true); setError('');
@@ -637,11 +625,9 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
     setLoading(false);
   }, [tableId, writeAndWait, readContract, pollTableState, addLog]);
 
-  // ── Eval hand for display ──
   const myHandName = myCards.length >= 2 && communityCards.length >= 3
     ? evaluate7([...myCards, ...communityCards]).name : '';
 
-  // ── Narrator callbacks + effects (must be before any early returns) ──
   const narrate = useCallback((text: string) => {
     if (text === lastNarrationRef.current) return;
     lastNarrationRef.current = text;
@@ -680,7 +666,6 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
     if (lobbyState === 'showdown') narrate('All bets are in. The cards speak now — FHE evaluation determines the winner...');
   }, [lobbyState, narrate]);
 
-  // ── Turn timer (auto-fold after 120s) ──
   useEffect(() => {
     if (!isMyTurn || lobbyState !== 'playing') {
       setTurnTimer(null);
@@ -702,7 +687,6 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
     return () => clearInterval(id);
   }, [isMyTurn, lobbyState]);
 
-  // ── Warn before leaving during active game ──
   useEffect(() => {
     if (lobbyState !== 'playing' && lobbyState !== 'showdown') return;
     const handler = (e: BeforeUnloadEvent) => {
@@ -713,7 +697,6 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
     return () => window.removeEventListener('beforeunload', handler);
   }, [lobbyState]);
 
-  // ── Render ──
   if (!deployed) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] px-4">
@@ -722,7 +705,6 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
     );
   }
 
-  // ── LOBBY ──
   if (lobbyState === 'idle') {
     return (
       <div className="w-full max-w-[900px] mx-auto py-8 px-4 min-h-[calc(100vh-160px)]">
@@ -861,7 +843,6 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
     );
   }
 
-  // ── WAITING ──
   if (lobbyState === 'waiting') {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
@@ -936,7 +917,6 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
     );
   }
 
-  // ── SEATED ──
   if (lobbyState === 'seated') {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
@@ -954,7 +934,6 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
     );
   }
 
-  // ── PLAYING ──
   if (lobbyState === 'playing' || lobbyState === 'showdown') {
     return (
       <div className="flex w-full max-w-[1100px] mx-auto py-6 px-4 gap-6">
@@ -1356,7 +1335,6 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
     );
   }
 
-  // ── RESULT ──
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 px-4">
       {handResult && (

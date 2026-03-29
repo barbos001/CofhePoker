@@ -7,7 +7,6 @@ import { PermitBadge, PermitDot }   from '@/components/ui/PermitIndicator';
 const truncateAddr = (addr: string) =>
   `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 
-// ── Tab config ────────────────────────────────────────────────────────
 const TABS = [
   { key: 'play',     label: 'PLAY',     icon: '♠' },
   { key: 'history',  label: 'HISTORY',  icon: '◈' },
@@ -15,7 +14,6 @@ const TABS = [
   { key: 'settings', label: 'SETTINGS', icon: '⚙' },
 ] as const;
 
-// ── Animated Balance ────────────────────────────────────────────────
 const AnimatedChips = ({ value }: { value: number }) => {
   const [display, setDisplay] = useState(value);
 
@@ -44,7 +42,6 @@ const AnimatedChips = ({ value }: { value: number }) => {
   );
 };
 
-// ── TopBar ────────────────────────────────────────────────────────────
 export const TopBar = () => {
   const { activeTab, setActiveTab, balance, setAppState, history, playState } = useGameStore();
   const { address: walletAddr, isConnected } = useAccount();
@@ -203,7 +200,6 @@ export const TopBar = () => {
   );
 };
 
-// ── BottomTabBar (mobile) ─────────────────────────────────────────────
 export const BottomTabBar = () => {
   const { activeTab, setActiveTab, balance, playState } = useGameStore();
 
@@ -264,7 +260,6 @@ export const BottomTabBar = () => {
   );
 };
 
-// ── NetworkGuard ──────────────────────────────────────────────────────
 export const NetworkGuard = () => {
   const { isConnected, chainId } = useAccount();
   const SEPOLIA_ID = 11155111;

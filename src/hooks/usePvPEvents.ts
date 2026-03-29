@@ -26,7 +26,6 @@ export const usePvPEvents = () => {
 
     const unwatchers: (() => void)[] = [];
 
-    // ── PlayerJoined — opponent joined my table ──
     try {
       const unwatch = publicClient.watchContractEvent({
         address: PVP_CONTRACT_ADDRESS,
@@ -49,7 +48,6 @@ export const usePvPEvents = () => {
       unwatchers.push(unwatch);
     } catch { /* event watching not supported on all transports */ }
 
-    // ── PlayerLeft — opponent left ──
     try {
       const unwatch = publicClient.watchContractEvent({
         address: PVP_CONTRACT_ADDRESS,
@@ -70,7 +68,6 @@ export const usePvPEvents = () => {
       unwatchers.push(unwatch);
     } catch {}
 
-    // ── GameInviteSent — someone invited me ──
     try {
       const unwatch = publicClient.watchContractEvent({
         address: PVP_CONTRACT_ADDRESS,
@@ -94,7 +91,6 @@ export const usePvPEvents = () => {
       unwatchers.push(unwatch);
     } catch {}
 
-    // ── FriendRequestSent — someone wants to be my friend ──
     try {
       const unwatch = publicClient.watchContractEvent({
         address: PVP_CONTRACT_ADDRESS,
@@ -113,7 +109,6 @@ export const usePvPEvents = () => {
       unwatchers.push(unwatch);
     } catch {}
 
-    // ── PvPHandComplete — hand finished (opponent triggered) ──
     try {
       const unwatch = publicClient.watchContractEvent({
         address: PVP_CONTRACT_ADDRESS,

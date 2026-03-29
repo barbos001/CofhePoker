@@ -493,15 +493,6 @@ src/
 
 ---
 
-## Links
-
-- [Fhenix](https://fhenix.io)
-- [CoFHE Documentation](https://cofhe-docs.fhenix.zone)
-- [CoFHE SDK](https://www.npmjs.com/package/@cofhe/sdk)
-- [Buildathon Telegram](https://t.me/+rA9gI3AsW8c3YzIx)
-
----
-
 ## Hackathon Submission — Wave 1
 
 ### TL;DR for Judges

@@ -8,7 +8,6 @@ import { WalletOverlay }           from './WalletOverlay';
 import { PermitExpiryToast }       from './ui/PermitIndicator';
 import { AnimatePresence, motion } from 'framer-motion';
 
-// ── FHE Scanline ──────────────────────────────────────────────────────
 const FHE_ACTIVE_STATES = new Set(['dealing', 'decrypting', 'botThinking', 'showdown']);
 
 const FheScanline = ({ active }: { active: boolean }) => (
@@ -46,7 +45,6 @@ const FheScanline = ({ active }: { active: boolean }) => (
   </AnimatePresence>
 );
 
-// ── AppShell ──────────────────────────────────────────────────────────
 export const AppShell = () => {
   const { activeTab, playState } = useGameStore();
   const fheActive = FHE_ACTIVE_STATES.has(playState);

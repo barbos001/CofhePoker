@@ -6,7 +6,6 @@
 
 import { type HandEvaluation, getCardData } from './poker';
 
-// ── Hand Categories (higher = better) ─────────────────────────────────
 
 export type HoldemHandRank =
   | 'straightFlush' | 'fourOfAKind' | 'fullHouse'
@@ -36,7 +35,6 @@ const RANK_PLURAL: Record<number, string> = {
   11: 'Jacks', 12: 'Queens', 13: 'Kings', 14: 'Aces',
 };
 
-// ── 5-Card Hand Evaluation ────────────────────────────────────────────
 
 /**
  * Evaluate a 5-card hand.
@@ -58,7 +56,6 @@ export const evaluate5 = (cardIds: number[]): HandEvaluation => {
   const ranks = cards.map(c => c.rank).sort((a, b) => a - b);
   const suits = cards.map(c => c.suit);
 
-  // ── Pair count (matches FHE pairwise eq) ─────────────────────
   let pairCount = 0;
   for (let i = 0; i < 5; i++) {
     for (let j = i + 1; j < 5; j++) {
@@ -66,10 +63,8 @@ export const evaluate5 = (cardIds: number[]): HandEvaluation => {
     }
   }
 
-  // ── Flush check ──────────────────────────────────────────────
   const isFlush = suits.every(s => s === suits[0]);
 
-  // ── Straight check ───────────────────────────────────────────
   let isStraight = false;
   let straightHigh = 0;
 
@@ -91,7 +86,6 @@ export const evaluate5 = (cardIds: number[]): HandEvaluation => {
 
   if (pairCount > 0) isStraight = false;
 
-  // ── Determine category ───────────────────────────────────────
   let category: number;
 
   if (isStraight && isFlush) {
@@ -114,7 +108,6 @@ export const evaluate5 = (cardIds: number[]): HandEvaluation => {
     category = CAT.HIGH_CARD;
   }
 
-  // ── Build kicker-encoded score ───────────────────────────────
   const sortedForScore = getScoringOrder(ranks, category, straightHigh);
   const score =
     category * 1e10 +
@@ -192,9 +185,7 @@ function findAllRanksWithCount(ranks: number[], count: number): number[] {
   return result;
 }
 
-// ── Hand Rank Helper ──────────────────────────────────────────────────
 
-// ── Best 5 of 7 (client-side brute-force for UI display) ──────────────
 
 /**
  * Evaluate best 5-card hand from 7 cards.
@@ -220,7 +211,6 @@ export const evaluate7 = (cardIds: number[]): HandEvaluation => {
   return best;
 };
 
-// ── Hand Rank Helper ──────────────────────────────────────────────────
 
 export const getHoldemHandRank = (score: number): HoldemHandRank => {
   const cat = Math.floor(score / 1e10);

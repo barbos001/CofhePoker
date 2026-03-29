@@ -1,11 +1,9 @@
-// ── Deployed address (updated by scripts/deploy.cts automatically) ──
 export const CONTRACT_ADDRESS = (
   import.meta.env.VITE_CONTRACT_ADDRESS || '0x0000000000000000000000000000000000000000'
 ) as `0x${string}`;
 
 export const CHAIN_ID = 11155111; // Ethereum Sepolia
 
-// ── ABI ─────────────────────────────────────────────────────────────
 export const CIPHER_POKER_ABI = [
   // View / pure
   {
@@ -196,7 +194,6 @@ export const CIPHER_POKER_ABI = [
   },
 ] as const;
 
-// ── Enum mapping (mirrors Solidity GameState) ──
 export const GameState = {
   WAITING:           0,
   PLAYER_TURN:       1,

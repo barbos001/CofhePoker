@@ -19,7 +19,6 @@ import {
 import { privateKeyToAccount } from 'viem/accounts';
 import { sepolia } from 'viem/chains';
 
-// ── env ──────────────────────────────────────────────────────────────────────
 
 const PK1 = process.env.PRIVATE_KEY;
 const PK2 = process.env.PRIVATE_KEY_2;
@@ -31,7 +30,6 @@ if (!PK1 || !PK2 || !CONTRACT) {
   process.exit(1);
 }
 
-// ── accounts & clients ──────────────────────────────────────────────────────
 
 const account1 = privateKeyToAccount(PK1);
 const account2 = privateKeyToAccount(PK2);
@@ -43,7 +41,6 @@ const publicClient = createPublicClient({ chain: sepolia, transport });
 const wallet1 = createWalletClient({ account: account1, chain: sepolia, transport });
 const wallet2 = createWalletClient({ account: account2, chain: sepolia, transport });
 
-// ── ABI ─────────────────────────────────────────────────────────────────────
 
 const abi = [
   // Constants
@@ -103,7 +100,6 @@ const abi = [
   { name: 'HandComplete', type: 'event', inputs: [{ name: 'tableId', type: 'uint256', indexed: true }, { name: 'winner', type: 'address', indexed: false }, { name: 'pot', type: 'uint256', indexed: false }] },
 ];
 
-// ── state names ─────────────────────────────────────────────────────────────
 
 const STATE_NAMES = [
   'OPEN', 'BOTH_SEATED', 'PREFLOP', 'FLOP', 'TURN', 'RIVER',
@@ -113,7 +109,6 @@ const STATE_NAMES = [
 const ACTION_CHECK = 0;
 const ACTION_CALL  = 4;
 
-// ── helpers ─────────────────────────────────────────────────────────────────
 
 const addr = CONTRACT;
 const defaultGas = 2_500_000n;
@@ -165,7 +160,6 @@ function otherWallet(nextToAct) {
 
 async function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-// ── cleanup helper ──────────────────────────────────────────────────────────
 
 async function cleanupSeat(wallet, label) {
   try {
@@ -179,7 +173,6 @@ async function cleanupSeat(wallet, label) {
   }
 }
 
-// ── main flow ───────────────────────────────────────────────────────────────
 
 async function main() {
   log('=== Cofhe Poker — Hold\'em PvP Integration Test ===');
@@ -245,7 +238,6 @@ async function main() {
   }
   log('');
 
-  // ── Betting rounds ────────────────────────────────────────────────────
 
   /**
    * Play a round where both players check (or SB calls then BB checks for preflop).
@@ -380,7 +372,6 @@ async function doCleanup(tableId) {
   log('');
 }
 
-// ── run ─────────────────────────────────────────────────────────────────────
 
 main().catch(err => {
   logErr('Fatal error', err);

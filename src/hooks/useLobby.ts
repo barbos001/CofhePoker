@@ -17,7 +17,6 @@ export const useLobby = () => {
 
   const deployed = PVP_CONTRACT_ADDRESS !== '0x0000000000000000000000000000000000000000';
 
-  // ── Fetch open tables ──
   const refresh = useCallback(async () => {
     if (!publicClient || !deployed) return;
     store.setLoading(true);
@@ -70,7 +69,6 @@ export const useLobby = () => {
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [deployed, refresh]);
 
-  // ── Create table ──
   const createTable = useCallback(async (buyIn: number, isPrivate: boolean) => {
     if (!deployed) throw new Error('PvP contract not deployed');
     LOG(`Creating table — buyIn: ${buyIn}, private: ${isPrivate}`);
@@ -97,7 +95,6 @@ export const useLobby = () => {
     return tableId;
   }, [deployed, writeContractAsync, publicClient, address, pvpStore, refresh]);
 
-  // ── Join table ──
   const joinTable = useCallback(async (tableId: number) => {
     if (!deployed) throw new Error('PvP contract not deployed');
     LOG(`Joining table #${tableId}`);
@@ -114,7 +111,6 @@ export const useLobby = () => {
     await refresh();
   }, [deployed, writeContractAsync, publicClient, pvpStore, refresh]);
 
-  // ── Join by invite code ──
   const joinByInvite = useCallback(async (tableId: number, code: `0x${string}`) => {
     if (!deployed) throw new Error('PvP contract not deployed');
     LOG(`Joining table #${tableId} by invite`);
@@ -129,7 +125,6 @@ export const useLobby = () => {
     await refresh();
   }, [deployed, writeContractAsync, publicClient, pvpStore, refresh]);
 
-  // ── Leave table ──
   const leaveTable = useCallback(async () => {
     if (!deployed || !pvpStore.tableId) return;
     LOG(`Leaving table #${pvpStore.tableId}`);

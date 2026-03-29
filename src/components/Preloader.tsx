@@ -4,12 +4,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 const N_STRIPS = 10;
 const CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!#$%&*♠♥♦♣';
 
-// ── Colors matching the pixel-art logo ─────────────────────────────────
 const NEON_GREEN = '#39FF14';
 const NEON_PURPLE = '#B366FF';
 const CARD_BG = 'rgba(60, 20, 120, 0.65)';
 
-// ── Card data (4 aces, fanned like the logo) ───────────────────────────
 const SUITS = ['♣', '♦', '♥', '♠'] as const;
 const SUIT_COLORS: Record<string, string> = {
   '♠': NEON_GREEN,
@@ -26,7 +24,6 @@ const CARD_FINALS = [
   { rotate: 18,  x: 72,  y: 14,  scale: 1.05 }, // front card slightly larger
 ];
 
-// ── Scramble Text ──────────────────────────────────────────────────────
 const ScrambleText = ({ text, active }: { text: string; active: boolean }) => {
   const [chars, setChars] = useState<string[]>(() => Array(text.length).fill('_'));
 
@@ -66,7 +63,6 @@ const ScrambleText = ({ text, active }: { text: string; active: boolean }) => {
   );
 };
 
-// ── Sparkle cross particles ────────────────────────────────────────────
 const SPARKLES = Array.from({ length: 16 }, (_, i) => ({
   x: 8 + Math.random() * 84,
   y: 8 + Math.random() * 84,
@@ -76,7 +72,6 @@ const SPARKLES = Array.from({ length: 16 }, (_, i) => ({
   color: i % 3 === 0 ? NEON_GREEN : i % 3 === 1 ? NEON_PURPLE : 'rgba(255,255,255,0.5)',
 }));
 
-// ── Single Ace Card Component ──────────────────────────────────────────
 const AceCard = ({
   suit,
   index,
@@ -247,7 +242,6 @@ const AceCard = ({
   );
 };
 
-// ── Detect page reload ─────────────────────────────────────────────────
 const isPageReload = (): boolean => {
   try {
     const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming;
@@ -257,7 +251,6 @@ const isPageReload = (): boolean => {
   }
 };
 
-// ── Preloader ──────────────────────────────────────────────────────────
 export const Preloader = ({ forceShow = false }: { forceShow?: boolean }) => {
   const [visible, setVisible] = useState(
     () => forceShow ? true : !isPageReload(),

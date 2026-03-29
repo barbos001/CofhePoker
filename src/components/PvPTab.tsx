@@ -13,7 +13,6 @@ import { PVP_CONTRACT_ADDRESS, CIPHER_POKER_PVP_ABI, PvPState } from '@/config/c
 
 const truncAddr = (a: string) => a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '???';
 
-// ── Waiting View (created table, no opponent yet) ──
 const WaitingView = () => {
   const { tableId, statusMsg, opponentAddress } = usePvPGameStore();
   const { leaveTable } = useLobby();
@@ -128,7 +127,6 @@ const WaitingView = () => {
   );
 };
 
-// ── Seated View (both players, start hand) ──
 const SeatedView = () => {
   const { opponentAddress } = usePvPGameStore();
   const { startPvPHand } = usePvPGame();
@@ -204,7 +202,6 @@ const SeatedView = () => {
   );
 };
 
-// ── Main PvP Tab ──
 export const PvPTab = () => {
   const { pvpState, setPvPState, setTableId, setOpponent } = usePvPGameStore();
   const { address } = useAccount();
@@ -214,7 +211,6 @@ export const PvPTab = () => {
   // Start event listeners
   usePvPEvents();
 
-  // ── Auto-restore / auto-leave stale seat on mount ──
   useEffect(() => {
     if (!publicClient || !address) return;
     const deployed = PVP_CONTRACT_ADDRESS !== '0x0000000000000000000000000000000000000000';

@@ -23,5 +23,7 @@ deployments/
 .DS_Store
 Thumbs.db
 
-# Claude Code
+# AI tools
 .claude/
+.cursor/
+.aider/

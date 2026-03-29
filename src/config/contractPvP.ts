@@ -1,9 +1,7 @@
-// ── Deployed address (updated by scripts/deployPvP.cts automatically) ──
 export const PVP_CONTRACT_ADDRESS = (
   import.meta.env.VITE_PVP_CONTRACT_ADDRESS || '0x76627a7A86C4Da6386f09b52cc8EC14C5EaC247d'
 ) as `0x${string}`;
 
-// ── State enum (mirrors Solidity PvPState) ──
 export const PvPState = {
   OPEN:               0,
   BOTH_SEATED:        1,
@@ -14,9 +12,7 @@ export const PvPState = {
 } as const;
 export type PvPStateValue = (typeof PvPState)[keyof typeof PvPState];
 
-// ── ABI ─────────────────────────────────────────────────────────────
 export const CIPHER_POKER_PVP_ABI = [
-  // ── Lobby ──
   {
     name: 'createPvPTable',
     type: 'function',
@@ -69,7 +65,6 @@ export const CIPHER_POKER_PVP_ABI = [
     outputs: [{ name: 'ids', type: 'uint256[]' }],
   },
 
-  // ── Friends ──
   {
     name: 'sendFriendRequest',
     type: 'function',
@@ -119,7 +114,6 @@ export const CIPHER_POKER_PVP_ABI = [
     outputs: [{ name: '', type: 'bool' }],
   },
 
-  // ── Invites ──
   {
     name: 'sendGameInvite',
     type: 'function',
@@ -152,7 +146,6 @@ export const CIPHER_POKER_PVP_ABI = [
     outputs: [{ name: '', type: 'bytes32' }],
   },
 
-  // ── PvP Game ──
   {
     name: 'startPvPHand',
     type: 'function',
@@ -178,7 +171,6 @@ export const CIPHER_POKER_PVP_ABI = [
     outputs: [],
   },
 
-  // ── View ──
   {
     name: 'getPvPTableInfo',
     type: 'function',
@@ -280,7 +272,6 @@ export const CIPHER_POKER_PVP_ABI = [
     outputs: [{ name: '', type: 'uint256' }],
   },
 
-  // ── Events ──
   { name: 'PvPTableCreated', type: 'event', inputs: [
     { name: 'tableId', type: 'uint256', indexed: true },
     { name: 'creator', type: 'address', indexed: true },

@@ -29,7 +29,6 @@ export const Card = ({ id, state, className, delay = 0 }: CardProps) => {
 
   if (state === 'folded') return null;
 
-  // ── Face Up ─────────────────────────────────────────────────────────
   const FaceUp = () => (
     <div
       className="absolute inset-0 rounded-xl flex flex-col justify-between p-2 md:p-3"
@@ -63,7 +62,6 @@ export const Card = ({ id, state, className, delay = 0 }: CardProps) => {
     </div>
   );
 
-  // ── Face Down (rich FHE card back) ──────────────────────────────────
   const FaceDown = () => (
     <div
       className="absolute inset-0 rounded-xl overflow-hidden"

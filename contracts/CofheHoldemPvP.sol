@@ -39,7 +39,6 @@ contract CofheHoldemPvP {
         bytes32 inviteCode;
         uint256 createdAt;
         bool    exists;
-        // ── Betting state ──
         address nextToAct;
         uint256 p1RoundBet;
         uint256 p2RoundBet;
@@ -65,7 +64,6 @@ contract CofheHoldemPvP {
         bool       showdownP1Done;
     }
 
-    // ── Signed action for off-chain betting ──
     struct SignedAction {
         uint256 tableId;
         uint256 handId;     // prevents replay across hands

@@ -1,9 +1,7 @@
-// ── Deployed address (updated by scripts/deployHoldem.cts automatically) ──
 export const HOLDEM_CONTRACT_ADDRESS = (
   import.meta.env.VITE_HOLDEM_CONTRACT_ADDRESS || '0x0000000000000000000000000000000000000000'
 ) as `0x${string}`;
 
-// ── Game states (mirrors Solidity GameState enum) ──
 export const HoldemState = {
   WAITING:            0,
   PREFLOP:            1,
@@ -19,15 +17,12 @@ export const HoldemState = {
 } as const;
 export type HoldemStateValue = (typeof HoldemState)[keyof typeof HoldemState];
 
-// ── ABI ─────────────────────────────────────────────────────────────
 export const CIPHER_HOLDEM_ABI = [
-  // ── Constants ──
   { name: 'SB',   type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint256' }] },
   { name: 'BB',   type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint256' }] },
   { name: 'BET_SIZE', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint256' }] },
   { name: 'INITIAL_BALANCE', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint256' }] },
 
-  // ── View functions ──
   { name: 'getBalance',    type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint256' }] },
   { name: 'getBalanceOf',  type: 'function', stateMutability: 'view', inputs: [{ name: 'addr', type: 'address' }], outputs: [{ name: '', type: 'uint256' }] },
   { name: 'getMyTableId',  type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint256' }] },
@@ -79,7 +74,6 @@ export const CIPHER_HOLDEM_ABI = [
     ],
   },
 
-  // ── Poll functions ──
   { name: 'isBotPfReady',    type: 'function', stateMutability: 'view', inputs: [{ name: 'tableId', type: 'uint256' }], outputs: [{ name: '', type: 'bool' }] },
   { name: 'isBotFlopReady',  type: 'function', stateMutability: 'view', inputs: [{ name: 'tableId', type: 'uint256' }], outputs: [{ name: '', type: 'bool' }] },
   { name: 'isBotTurnReady',  type: 'function', stateMutability: 'view', inputs: [{ name: 'tableId', type: 'uint256' }], outputs: [{ name: '', type: 'bool' }] },
@@ -87,7 +81,6 @@ export const CIPHER_HOLDEM_ABI = [
   { name: 'isShowdownReady', type: 'function', stateMutability: 'view', inputs: [{ name: 'tableId', type: 'uint256' }], outputs: [{ name: '', type: 'bool' }] },
   { name: 'tableOf', type: 'function', stateMutability: 'view', inputs: [{ name: '', type: 'address' }], outputs: [{ name: '', type: 'uint256' }] },
 
-  // ── State-mutating functions ──
   { name: 'createTable',   type: 'function', stateMutability: 'nonpayable', inputs: [], outputs: [{ name: 'tableId', type: 'uint256' }] },
   { name: 'startHand',     type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'tableId', type: 'uint256' }], outputs: [] },
   { name: 'actPreflop',    type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'tableId', type: 'uint256' }, { name: 'action', type: 'uint8' }], outputs: [] },
@@ -104,7 +97,6 @@ export const CIPHER_HOLDEM_ABI = [
   { name: 'computeShowdownP2', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'tableId', type: 'uint256' }], outputs: [] },
   { name: 'resolveShowdown',   type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'tableId', type: 'uint256' }], outputs: [] },
 
-  // ── Events ──
   { name: 'TableCreated',     type: 'event', inputs: [{ name: 'tableId', type: 'uint256', indexed: true }, { name: 'player', type: 'address', indexed: false }] },
   { name: 'HandStarted',      type: 'event', inputs: [{ name: 'tableId', type: 'uint256', indexed: true }, { name: 'handId', type: 'uint256', indexed: false }] },
   { name: 'PlayerAction',     type: 'event', inputs: [{ name: 'tableId', type: 'uint256', indexed: true }, { name: 'action', type: 'string', indexed: false }] },

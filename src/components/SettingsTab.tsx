@@ -7,7 +7,6 @@ import { useCofhe } from '@/hooks/useCofhe';
 
 const ETHERSCAN = 'https://sepolia.etherscan.io';
 
-// ── Toggle Switch ─────────────────────────────────────────────────────
 const Toggle = ({ on, onToggle, label, desc }: { on: boolean; onToggle: () => void; label: string; desc?: string }) => (
   <button onClick={onToggle} className="flex items-center justify-between w-full py-4 group text-left">
     <div className="flex flex-col gap-1 pr-4">
@@ -28,7 +27,6 @@ const Toggle = ({ on, onToggle, label, desc }: { on: boolean; onToggle: () => vo
   </button>
 );
 
-// ── Select Dropdown ───────────────────────────────────────────────────
 const Select = ({
   label,
   desc,
@@ -66,7 +64,6 @@ const Select = ({
   </div>
 );
 
-// ── Setting Row ───────────────────────────────────────────────────────
 const Row = ({ label, value, mono, color }: { label: string; value: string; mono?: boolean; color?: string }) => (
   <div className="flex items-center justify-between py-4">
     <span className="font-satoshi text-[15px]" style={{ color: 'rgba(255,255,255,0.6)' }}>{label}</span>
@@ -79,7 +76,6 @@ const Row = ({ label, value, mono, color }: { label: string; value: string; mono
   </div>
 );
 
-// ── Action Button Row ─────────────────────────────────────────────────
 const ActionRow = ({
   label,
   desc,
@@ -115,7 +111,6 @@ const ActionRow = ({
   </div>
 );
 
-// ── Status Badge ──────────────────────────────────────────────────────
 const StatusBadge = ({ active, label }: { active: boolean; label: string }) => (
   <div className="flex items-center gap-1.5">
     <span
@@ -132,7 +127,6 @@ const StatusBadge = ({ active, label }: { active: boolean; label: string }) => (
   </div>
 );
 
-// ── Section Card ──────────────────────────────────────────────────────
 const Section = ({
   title,
   icon,
@@ -223,7 +217,6 @@ const Section = ({
   );
 };
 
-// ── SettingsTab ───────────────────────────────────────────────────────
 export const SettingsTab = () => {
   const { balance, history, setAppState, permitStatus, permitError, setPermitStatus, setPermitError } = useGameStore();
   const { address, isConnected, chainId } = useAccount();

@@ -7,7 +7,6 @@ import { CONTRACT_ADDRESS } from '@/config/contract';
 
 const ETHERSCAN_URL = `https://sepolia.etherscan.io/address/${CONTRACT_ADDRESS}`;
 
-// ── GlitchText ────────────────────────────────────────────────────────
 const GlitchText = ({
   children,
   className,
@@ -65,7 +64,6 @@ const GlitchText = ({
   );
 };
 
-// ── Gradient Mesh Background ────────────────────────────────────────────
 const GradientMesh = () => (
   <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden>
     {/* Primary mesh blob */}
@@ -111,7 +109,6 @@ const GradientMesh = () => (
   </div>
 );
 
-// ── Enhanced SuitParticles ─────────────────────────────────────────────
 const SUITS = ['♠', '♥', '♦', '♣'];
 const PARTICLES: Array<{
   suit: string;
@@ -153,7 +150,6 @@ const SuitParticles = () => (
   </div>
 );
 
-// ── Magnetic Button ─────────────────────────────────────────────────────
 const MagneticButton = ({
   children,
   onClick,
@@ -200,7 +196,6 @@ const MagneticButton = ({
   );
 };
 
-// ── 3D Tilt Card ────────────────────────────────────────────────────────
 const TiltCard = ({
   children,
   className,
@@ -244,7 +239,6 @@ const TiltCard = ({
   );
 };
 
-// ── EncryptedCardsPanel ───────────────────────────────────────────────
 const CARD_TRANSFORMS = [
   { rotate: -14, tx: -60, ty: 8 },
   { rotate: 0,   tx: 0,   ty: -12 },
@@ -390,7 +384,6 @@ const EncryptedCardsPanel = () => (
   </div>
 );
 
-// ── Ticker ────────────────────────────────────────────────────────────
 const TICKER_ITEMS = [
   'FHE.randomEuint64()',
   'FHE.rem(x, 52)',
@@ -426,7 +419,6 @@ const Ticker = () => {
   );
 };
 
-// ── Reveal wrapper ────────────────────────────────────────────────────
 const Reveal = ({
   children,
   delay = 0,
@@ -451,7 +443,6 @@ const Reveal = ({
   );
 };
 
-// ── ExpandRow ─────────────────────────────────────────────────────────
 const ExpandRow = ({ code, desc }: { code: string; desc: string }) => {
   const [open, setOpen] = useState(false);
   return (
@@ -482,7 +473,6 @@ const ExpandRow = ({ code, desc }: { code: string; desc: string }) => {
   );
 };
 
-// ── Live Players Counter ─────────────────────────────────────────────
 const LiveCounter = () => {
   const [count, setCount] = useState(14);
 
@@ -521,7 +511,6 @@ const LiveCounter = () => {
   );
 };
 
-// ── Win Ticker ───────────────────────────────────────────────────────
 const WIN_MESSAGES = [
   '0x8a3f...2c91 won +30 chips',
   '0xf1b2...7d44 won +30 chips',
@@ -563,7 +552,6 @@ const WinTicker = () => {
   );
 };
 
-// ── Parallax Section ────────────────────────────────────────────────
 const ParallaxSection = ({
   children,
   className,
@@ -586,7 +574,6 @@ const ParallaxSection = ({
   );
 };
 
-// ── LandingPage ───────────────────────────────────────────────────────
 export const LandingPage = () => {
   const { setAppState } = useGameStore();
   const handlePlay = () => setAppState('connecting');
@@ -1393,7 +1380,7 @@ export const LandingPage = () => {
                   {
                     title: 'Source Code',
                     desc:  'Smart contract + frontend — fully open source',
-                    link:  'https://github.com',
+                    link:  'https://github.com/barbos001/CofhePoker',
                     label: 'GitHub ↗',
                     accent: 'white',
                     icon:  '⟨/⟩',
@@ -1409,7 +1396,7 @@ export const LandingPage = () => {
                   {
                     title: 'On-Chain',
                     desc:  'Verify every transaction, every hand, every card deal on Etherscan',
-                    link:  '${ETHERSCAN_URL}',
+                    link:  ETHERSCAN_URL,
                     label: 'Etherscan ↗',
                     accent: 'var(--color-info)',
                     icon:  '⛓',
@@ -1519,7 +1506,7 @@ export const LandingPage = () => {
             <div className="font-mono text-[12px] flex flex-col items-center gap-1.5" style={{ color: 'var(--color-text-dark)' }}>
               <span>Contract: {CONTRACT_ADDRESS.slice(0, 10)}...{CONTRACT_ADDRESS.slice(-8)}</span>
               <a
-                href="${ETHERSCAN_URL}"
+                href={ETHERSCAN_URL}
                 target="_blank"
                 rel="noreferrer"
                 className="transition-colors hover:text-white"
@@ -1567,8 +1554,8 @@ export const LandingPage = () => {
                   Verify
                 </div>
                 <div className="flex flex-col gap-2">
-                  <a href="${ETHERSCAN_URL}" target="_blank" rel="noreferrer" className="font-satoshi text-sm transition-colors hover:text-white" style={{ color: 'var(--color-text-secondary)' }}>Etherscan</a>
-                  <a href="https://github.com/leonid-cofhe/cofhe-poker" target="_blank" rel="noreferrer" className="font-satoshi text-sm transition-colors hover:text-white" style={{ color: 'var(--color-text-secondary)' }}>GitHub</a>
+                  <a href={ETHERSCAN_URL} target="_blank" rel="noreferrer" className="font-satoshi text-sm transition-colors hover:text-white" style={{ color: 'var(--color-text-secondary)' }}>Etherscan</a>
+                  <a href="https://github.com/barbos001/CofhePoker" target="_blank" rel="noreferrer" className="font-satoshi text-sm transition-colors hover:text-white" style={{ color: 'var(--color-text-secondary)' }}>GitHub</a>
                 </div>
               </div>
             </div>

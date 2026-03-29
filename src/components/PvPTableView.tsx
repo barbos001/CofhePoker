@@ -10,7 +10,6 @@ import { useMotionValue, useSpring } from 'framer-motion';
 
 const truncAddr = (a: string) => a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '???';
 
-// ── Magnetic button (same as PlayTab) ──
 const MagneticBtn = ({ children, onClick, disabled, className, style }: {
   children: React.ReactNode; onClick: () => void; disabled?: boolean;
   className?: string; style?: React.CSSProperties;
@@ -35,7 +34,6 @@ const MagneticBtn = ({ children, onClick, disabled, className, style }: {
   );
 };
 
-// ── Table felt pattern ──
 const TablePattern = () => (
   <svg className="absolute inset-0 w-full h-full rounded-3xl" style={{ opacity: 0.04 }} preserveAspectRatio="none">
     <defs>
@@ -47,7 +45,6 @@ const TablePattern = () => (
   </svg>
 );
 
-// ── Result overlay ──
 const PvPResultOverlay = () => {
   const { pvpState, handResult, pot, balance, myEval, opponentEval, myCards, opponentCards, resetForNextHand, resetToIdle } = usePvPGameStore();
   if (pvpState !== 'result' || !handResult) return null;
@@ -135,7 +132,6 @@ const PvPResultOverlay = () => {
   );
 };
 
-// ── Main PvP Table ──
 export const PvPTableView = () => {
   const { pvpState, statusMsg, pot, balance, myCards, opponentAddress, opponentCards } = usePvPGameStore();
   const { pvpAct } = usePvPGame();

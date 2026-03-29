@@ -32,7 +32,6 @@ export interface PayoutResult {
   desc:         string;
 }
 
-// ── Constants ──────────────────────────────────────────────────────────
 const SUITS: Suit[] = ['♥', '♦', '♣', '♠'];
 
 const RANK_NAME: Record<number, string> = {
@@ -51,7 +50,6 @@ export type HandRank =
   | 'miniRoyal' | 'straightFlush' | 'trips'
   | 'straight'  | 'flush'         | 'pair' | 'highCard';
 
-// ── Card Data ──────────────────────────────────────────────────────────
 export const getCardData = (id: number): CardData => {
   const rank = (Math.floor(id / 4) + 2) as Rank;
   return {
@@ -62,7 +60,6 @@ export const getCardData = (id: number): CardData => {
   };
 };
 
-// ── Hand Evaluation ────────────────────────────────────────────────────
 //  Score bands (higher = better):
 //    6_xxx  Straight Flush / Mini Royal
 //    5_xxx  Three of a Kind
@@ -70,7 +67,6 @@ export const getCardData = (id: number): CardData => {
 //    3_xxx  Flush
 //    2_xxx  Pair
 //    0_xxx  High Card
-// ───────────────────────────────────────────────────────────────────────
 
 const score3 = (a: number, b: number, c: number) =>
   a * 10000 + b * 100 + c;
@@ -148,7 +144,6 @@ export const getHandRank = (score: number): HandRank => {
   return 'highCard';
 };
 
-// ── Q-6-4 Strategy (beginner hints) ──────────────────────────────────
 
 export const Q64_SCORE = score3(12, 6, 4);
 
@@ -160,7 +155,6 @@ export const getOptimalAction = (cardIds: number[]): { action: 'PLAY' | 'FOLD'; 
   return { action: 'FOLD', reason: `${ev.name} — below Q-6-4 threshold` };
 };
 
-// ── Utilities ──────────────────────────────────────────────────────────
 
 export const compareHands = (a: HandEvaluation, b: HandEvaluation): number =>
   a.score - b.score;

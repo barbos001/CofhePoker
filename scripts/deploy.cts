@@ -17,7 +17,6 @@ async function main() {
   const address = await poker.getAddress();
   console.log(`✅  CofhePoker deployed at: ${address}`);
 
-  // ── Save deployment info ──────────────────────────────────────────
   const deploymentDir  = path.join(__dirname, "..", "deployments");
   const deploymentFile = path.join(deploymentDir, `${network}.json`);
   const configFile     = path.join(__dirname, "..", "src", "config", "contract.ts");
@@ -33,7 +32,6 @@ async function main() {
   fs.writeFileSync(deploymentFile, JSON.stringify(deployment, null, 2));
   console.log(`\nSaved deployment to deployments/${network}.json`);
 
-  // ── Update src/config/contract.ts ────────────────────────────────
   // Read the current contract.ts and replace the placeholder address
   if (fs.existsSync(configFile)) {
     let content = fs.readFileSync(configFile, "utf-8");

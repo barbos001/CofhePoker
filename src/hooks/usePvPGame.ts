@@ -58,7 +58,6 @@ export const usePvPGame = () => {
     return Number(bal);
   }, [publicClient, address]);
 
-  // ── Start PvP Hand ──
   const startPvPHand = useCallback(async () => {
     if (!isOnChain || !store.tableId) return;
     const tableId = BigInt(store.tableId);
@@ -133,7 +132,6 @@ export const usePvPGame = () => {
     }
   }, [isOnChain, store, writeAndWait, publicClient, address, decryptCard, readBalance]);
 
-  // ── Play / Fold ──
   const pvpAct = useCallback(async (plays: boolean) => {
     if (!isOnChain || !store.tableId) return;
     const tableId = BigInt(store.tableId);
@@ -239,7 +237,6 @@ export const usePvPGame = () => {
     }
   }, [isOnChain, store, writeAndWait, publicClient, address, decryptPublicCard, readBalance]);
 
-  // ── Finish hand helper ──
   const _finishHand = useCallback(async (tableId: bigint, txHash: `0x${string}`) => {
     if (!publicClient) return;
 

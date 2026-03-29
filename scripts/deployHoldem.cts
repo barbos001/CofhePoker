@@ -17,7 +17,6 @@ async function main() {
   const address = await holdem.getAddress();
   console.log(`✅  CofheHoldem deployed at: ${address}`);
 
-  // ── Save deployment info ──────────────────────────────────────────
   const deploymentDir  = path.join(__dirname, "..", "deployments");
   const deploymentFile = path.join(deploymentDir, `${network}-holdem.json`);
   const configFile     = path.join(__dirname, "..", "src", "config", "contractHoldem.ts");
@@ -33,7 +32,6 @@ async function main() {
   fs.writeFileSync(deploymentFile, JSON.stringify(deployment, null, 2));
   console.log(`\nSaved deployment to deployments/${network}-holdem.json`);
 
-  // ── Update src/config/contractHoldem.ts ────────────────────────────
   if (fs.existsSync(configFile)) {
     let content = fs.readFileSync(configFile, "utf-8");
     content = content.replace(

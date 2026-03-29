@@ -12,9 +12,7 @@ import "@fhenixprotocol/cofhe-contracts/FHE.sol";
 ///  If player checks and bot bets → player must call or fold
 contract CofheHoldem {
 
-    // ────────────────────────────────────────────────────────────────
     //  Constants
-    // ────────────────────────────────────────────────────────────────
     uint256 public constant SB              = 5;
     uint256 public constant BB              = 10;
     uint256 public constant BET_SIZE        = 10;
@@ -26,9 +24,7 @@ contract CofheHoldem {
     uint256 constant BOT_TURN_THRESHOLD = 1;   // at least 1 pair in 6 cards
     uint256 constant BOT_RIVER_THRESHOLD = 1;  // at least 1 pair in 7 cards
 
-    // ────────────────────────────────────────────────────────────────
     //  State types
-    // ────────────────────────────────────────────────────────────────
     enum GameState {
         WAITING,             // 0
         PREFLOP,             // 1 - player acts
@@ -71,9 +67,7 @@ contract CofheHoldem {
         bool       showdownP1Done; // bot score computed
     }
 
-    // ────────────────────────────────────────────────────────────────
     //  Storage
-    // ────────────────────────────────────────────────────────────────
     mapping(uint256 => Table) public tables;
     mapping(uint256 => Hand)  internal hands;
     mapping(address => uint256) public tableOf;
@@ -81,9 +75,7 @@ contract CofheHoldem {
 
     uint256 public nextTableId = 1;
 
-    // ────────────────────────────────────────────────────────────────
     //  Events
-    // ────────────────────────────────────────────────────────────────
     event TableCreated(uint256 indexed tableId, address player);
     event HandStarted(uint256 indexed tableId, uint256 handId);
     event PlayerAction(uint256 indexed tableId, string action);
@@ -91,9 +83,7 @@ contract CofheHoldem {
     event CommunityRevealed(uint256 indexed tableId, uint8 count);
     event HandComplete(uint256 indexed tableId, address winner, uint256 pot);
 
-    // ────────────────────────────────────────────────────────────────
     //  Modifiers
-    // ────────────────────────────────────────────────────────────────
     modifier onlyPlayer(uint256 tableId) {
         require(tables[tableId].player == msg.sender, "Not your table");
         _;
@@ -834,7 +824,6 @@ contract CofheHoldem {
         euint64 zero     = FHE.asEuint64(0);
         euint64 fourteen = FHE.asEuint64(14);
 
-        // ── Extract ranks and suits ──
         euint64[7] memory r;
         euint64[7] memory s;
         r[0] = FHE.div(hole[0], four);  s[0] = FHE.rem(hole[0], four);
@@ -844,7 +833,6 @@ contract CofheHoldem {
             s[i+2] = FHE.rem(comm[i], four);
         }
 
-        // ── Pairwise rank equalities C(7,2)=21 ──
         // Store in flat array; also accumulate per-card match counts
         euint64[7] memory mc; // match count per card
         for (uint256 i = 0; i < 7; i++) mc[i] = zero;
@@ -859,11 +847,9 @@ contract CofheHoldem {
             }
         }
 
-        // ── Max match count ──
         euint64 maxMc = mc[0];
         for (uint256 i = 1; i < 7; i++) maxMc = FHE.max(maxMc, mc[i]);
 
-        // ── Flush detection: count cards per suit ──
         euint64[4] memory suitCount;
         for (uint256 si = 0; si < 4; si++) {
             suitCount[si] = zero;
@@ -877,7 +863,6 @@ contract CofheHoldem {
         for (uint256 i = 1; i < 4; i++) maxSuit = FHE.max(maxSuit, suitCount[i]);
         ebool isFlush = FHE.gte(maxSuit, FHE.asEuint64(5));
 
-        // ── Straight detection: sort 7 ranks, check windows ──
         euint64[7] memory sr; // sorted ranks
         for (uint256 i = 0; i < 7; i++) sr[i] = r[i];
         // Bubble sort ascending
@@ -916,7 +901,6 @@ contract CofheHoldem {
         isStraight = FHE.or(isStraight, acelow);
         straightHigh = FHE.select(acelow, FHE.asEuint64(3), straightHigh);
 
-        // ── Hand type from 7 cards ──
         // totalPc + maxMc → hand type (for pair-based)
         euint64 ht = zero;
         // pair: totalPc>=1
@@ -949,7 +933,6 @@ contract CofheHoldem {
             FHE.asEuint64(8), ht
         );
 
-        // ── Adjusted ranks: sort top 5 for scoring ──
         euint64[7] memory adj;
         for (uint256 i = 0; i < 7; i++) {
             adj[i] = FHE.add(r[i], FHE.mul(mc[i], fourteen));

@@ -14,7 +14,6 @@ export const useFriends = () => {
 
   const deployed = PVP_CONTRACT_ADDRESS !== '0x0000000000000000000000000000000000000000';
 
-  // ── Load friends list ──
   const loadFriends = useCallback(async () => {
     if (!publicClient || !deployed || !address) return;
     store.setLoading(true);
@@ -50,7 +49,6 @@ export const useFriends = () => {
 
   useEffect(() => { loadFriends(); }, [loadFriends]);
 
-  // ── Send friend request ──
   const sendRequest = useCallback(async (to: string) => {
     if (!deployed) throw new Error('PvP contract not deployed');
     LOG(`Sending friend request to ${to.slice(0, 10)}…`);
@@ -63,7 +61,6 @@ export const useFriends = () => {
     LOG('Friend request sent ✓');
   }, [deployed, writeContractAsync, publicClient, store]);
 
-  // ── Accept friend request ──
   const acceptRequest = useCallback(async (from: string) => {
     if (!deployed) throw new Error('PvP contract not deployed');
     LOG(`Accepting request from ${from.slice(0, 10)}…`);
@@ -77,7 +74,6 @@ export const useFriends = () => {
     LOG('Friend added ✓');
   }, [deployed, writeContractAsync, publicClient, store]);
 
-  // ── Remove friend ──
   const removeFriendAction = useCallback(async (friend: string) => {
     if (!deployed) throw new Error('PvP contract not deployed');
     LOG(`Removing friend ${friend.slice(0, 10)}…`);

@@ -14,12 +14,10 @@ import { sleep } from '@/lib/utils';
 import { getCardData } from '@/lib/poker';
 import { evaluate7 } from '@/lib/holdem';
 
-// ── Logging ──────────────────────────────────────────────────────────
 const TX   = (...a: unknown[]) => console.log('%c[TX]',   'color:#39FF14;font-weight:bold', ...a);
 const GAME = (...a: unknown[]) => console.log('%c[GAME]', 'color:#00BFFF;font-weight:bold', ...a);
 const POLL = (...a: unknown[]) => console.log('%c[POLL]', 'color:#888;font-weight:bold',    ...a);
 
-// ── Polling ──────────────────────────────────────────────────────────
 const POLL_MS   = 3_000;
 const MAX_POLLS = 60;
 
@@ -49,7 +47,6 @@ const ROUND_LABELS: Record<Round, string> = {
   preflop: 'Pre-flop', flop: 'Flop', turn: 'Turn', river: 'River',
 };
 
-// ── Hook ─────────────────────────────────────────────────────────────
 export const useHoldemActions = () => {
   const store                    = useGameStore();
   const { address, isConnected } = useAccount();
@@ -62,7 +59,6 @@ export const useHoldemActions = () => {
 
   const pendingTableId = useRef<bigint | null>(null);
 
-  // ── Helpers ──────────────────────────────────────────────────────
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const writeAndWait = useCallback(async (fnName: string, args: any): Promise<`0x${string}`> => {
@@ -106,7 +102,6 @@ export const useHoldemActions = () => {
     return { state: info[1], pot: Number(info[2]), waitingForCall: info[4], playerBet: info[5] };
   }, [publicClient, address]);
 
-  // ── START HAND ─────────────────────────────────────────────────
 
   const startHand = useCallback(async () => {
     if (!isOnChain || !publicClient) return;
@@ -198,7 +193,6 @@ export const useHoldemActions = () => {
     }
   }, [isOnChain, publicClient, store, writeAndWait, getTableId, readBalance, getTableInfo, decryptCard, address]);
 
-  // ── GENERIC ROUND ACTION ─────────────────────────────────────
 
   const actRound = useCallback(async (
     round: Round,
@@ -286,7 +280,6 @@ export const useHoldemActions = () => {
     }
   }, [isOnChain, publicClient, store, writeAndWait, getTableInfo, readBalance, address]);
 
-  // ── CALL BOT ──────────────────────────────────────────────────
 
   const callBotAction = useCallback(async () => {
     if (!isOnChain || !publicClient) return;
@@ -326,7 +319,6 @@ export const useHoldemActions = () => {
     }
   }, [isOnChain, publicClient, store, writeAndWait, getTableInfo, readBalance]);
 
-  // ── ROUND-SPECIFIC WRAPPERS ─────────────────────────────────
 
   const actPreflop = useCallback((action: 'check' | 'bet' | 'raise') =>
     actRound('preflop', action, 'actPreflop', 'isBotPfReady', 'resolveBotPreFlop', 'flop', 3),
@@ -344,7 +336,6 @@ export const useHoldemActions = () => {
     actRound('river', action, 'actRiver', 'isBotRiverReady', 'resolveBotRiver', 'showdown', 0),
   [actRound]);
 
-  // ── FOLD ──────────────────────────────────────────────────────
 
   const fold = useCallback(async () => {
     if (!isOnChain) return;
@@ -378,7 +369,6 @@ export const useHoldemActions = () => {
     }
   }, [isOnChain, store, writeAndWait, readBalance]);
 
-  // ── SHOWDOWN HANDLING ─────────────────────────────────────────
 
   const _handleShowdown = useCallback(async (tableId: bigint) => {
     if (!publicClient) return;
@@ -426,7 +416,6 @@ export const useHoldemActions = () => {
     await _finishHand(tableId, 'showdown', showdownHash);
   }, [publicClient, store, writeAndWait, address]);
 
-  // ── COMMUNITY CARD DECRYPTION ─────────────────────────────────
 
   const _decryptCommunity = useCallback(async (tableId: bigint, count: number, round: Round) => {
     if (!publicClient) return;
@@ -468,7 +457,6 @@ export const useHoldemActions = () => {
     }
   }, [publicClient, store, decryptPublicCard, address]);
 
-  // ── FINISH HAND ───────────────────────────────────────────────
 
   const _finishHand = useCallback(async (tableId: bigint, desc: string, txHash = '' as `0x${string}`) => {
     if (!publicClient) return;
@@ -529,7 +517,6 @@ export const useHoldemActions = () => {
   };
 };
 
-// ── Utils ──────────────────────────────────────────────────────────────
 
 function stateToRound(state: number): Round | null {
   switch (state) {

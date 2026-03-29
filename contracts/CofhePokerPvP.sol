@@ -9,9 +9,7 @@ import "@fhenixprotocol/cofhe-contracts/FHE.sol";
 ///         not validators — can see a hand until showdown reveals the loser's cards.
 contract CofhePokerPvP {
 
-    // ────────────────────────────────────────────────────────────────
     //  State types
-    // ────────────────────────────────────────────────────────────────
 
     enum PvPState {
         OPEN,               // 0 — waiting for opponent
@@ -48,9 +46,7 @@ contract CofhePokerPvP {
         bytes32    showdownHandle;
     }
 
-    // ────────────────────────────────────────────────────────────────
     //  Storage
-    // ────────────────────────────────────────────────────────────────
 
     mapping(uint256 => PvPTable) public pvpTables;
     mapping(uint256 => PvPHand)  internal pvpHands;
@@ -65,17 +61,13 @@ contract CofhePokerPvP {
     uint256[] public openTableIds;
     mapping(uint256 => uint256) internal openTableIndex;  // tableId → index in openTableIds
 
-    // ── Friends ──
     mapping(address => mapping(address => bool)) public isFriend;
     mapping(address => address[]) internal friendLists;
     mapping(address => mapping(address => bool)) public pendingRequest;
 
-    // ── Game invites ──
     mapping(address => mapping(address => uint256)) public invites;   // from → to → tableId
 
-    // ────────────────────────────────────────────────────────────────
     //  Events
-    // ────────────────────────────────────────────────────────────────
 
     event PvPTableCreated(uint256 indexed tableId, address indexed creator, uint256 buyIn, bool isPrivate);
     event PlayerJoined(uint256 indexed tableId, address indexed player);
@@ -91,9 +83,7 @@ contract CofhePokerPvP {
     event GameInviteAccepted(address indexed from, address indexed to, uint256 indexed tableId);
     event GameInviteDeclined(address indexed from, address indexed to);
 
-    // ────────────────────────────────────────────────────────────────
     //  Modifiers
-    // ────────────────────────────────────────────────────────────────
 
     modifier onlySeated(uint256 tableId) {
         PvPTable storage t = pvpTables[tableId];
@@ -106,9 +96,7 @@ contract CofhePokerPvP {
         _;
     }
 
-    // ────────────────────────────────────────────────────────────────
     //  Lobby
-    // ────────────────────────────────────────────────────────────────
 
     /// @notice Create a PvP table. If first interaction, initialises chip balance.
     function createPvPTable(uint256 buyIn, bool isPrivate) external returns (uint256 tableId) {
@@ -239,9 +227,7 @@ contract CofhePokerPvP {
         delete openTableIndex[tableId];
     }
 
-    // ────────────────────────────────────────────────────────────────
     //  Friends
-    // ────────────────────────────────────────────────────────────────
 
     function sendFriendRequest(address to) external {
         require(to != msg.sender, "Cannot befriend yourself");
@@ -284,9 +270,7 @@ contract CofhePokerPvP {
         }
     }
 
-    // ────────────────────────────────────────────────────────────────
     //  Game Invites
-    // ────────────────────────────────────────────────────────────────
 
     function sendGameInvite(address to, uint256 tableId) external {
         PvPTable storage t = pvpTables[tableId];
@@ -312,9 +296,7 @@ contract CofhePokerPvP {
         emit GameInviteDeclined(from, msg.sender);
     }
 
-    // ────────────────────────────────────────────────────────────────
     //  PvP Game
-    // ────────────────────────────────────────────────────────────────
 
     /// @notice Start a hand. Either player can call when both are seated.
     function startPvPHand(uint256 tableId) external onlySeated(tableId) {
@@ -445,9 +427,7 @@ contract CofhePokerPvP {
         emit PvPHandComplete(tableId, h.winner, t.pot);
     }
 
-    // ────────────────────────────────────────────────────────────────
     //  View helpers
-    // ────────────────────────────────────────────────────────────────
 
     function getPvPTableInfo(uint256 tableId)
         external view
@@ -535,9 +515,7 @@ contract CofhePokerPvP {
         return pvpTables[tableId].inviteCode;
     }
 
-    // ────────────────────────────────────────────────────────────────
     //  Internal FHE logic
-    // ────────────────────────────────────────────────────────────────
 
     function _dealPvPCards(uint256 tableId) internal {
         PvPTable storage t = pvpTables[tableId];

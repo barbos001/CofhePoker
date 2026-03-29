@@ -10,11 +10,9 @@ import { useGameStore } from '@/store/useGameStore';
 import { CONTRACT_ADDRESS } from '@/config/contract';
 import { parseEther } from 'viem';
 
-// ── Logging ──────────────────────────────────────────────────────────
 const GUARD = (...args: unknown[]) =>
   console.log('%c[GUARD]', 'color:#FF8C42;font-weight:bold', ...args);
 
-// ── Constants ────────────────────────────────────────────────────────
 const MIN_GAS_ETH       = 0.001;        // ~enough for a few txs
 const TURN_TIMEOUT_S    = 60;            // 60s to decide
 const COOLDOWN_MS       = 2_000;         // 2s between hands
@@ -35,7 +33,6 @@ export const useGameGuards = () => {
   const contractDeployed = CONTRACT_ADDRESS !== '0x0000000000000000000000000000000000000000';
   const isOnChain = isConnected && contractDeployed;
 
-  // ── Turn timer ──────────────────────────────────────────────────
   const [turnTimeLeft, setTurnTimeLeft] = useState(TURN_TIMEOUT_S);
   const timerRef    = useRef<ReturnType<typeof setInterval>>();
   const foldRef     = useRef<(() => Promise<void>) | null>(null);
@@ -77,7 +74,6 @@ export const useGameGuards = () => {
     }
   }, [store.playState]);
 
-  // ── Beforeunload — warn on close/refresh during active game ─────
   useEffect(() => {
     const isActive = !['lobby', 'result'].includes(store.playState);
     if (!isActive) return;
@@ -90,7 +86,6 @@ export const useGameGuards = () => {
     return () => window.removeEventListener('beforeunload', handler);
   }, [store.playState]);
 
-  // ── Disconnect guard — auto-fold if wallet disconnects mid-game ─
   const wasConnected = useRef(isConnected);
   useEffect(() => {
     if (wasConnected.current && !isConnected) {
@@ -104,7 +99,6 @@ export const useGameGuards = () => {
     wasConnected.current = isConnected;
   }, [isConnected, store.playState, isOnChain, store]);
 
-  // ── Tab visibility — warn when switching tabs during active game ─
   useEffect(() => {
     const isActive = !['lobby', 'result'].includes(store.playState);
     if (!isActive) return;
@@ -118,7 +112,6 @@ export const useGameGuards = () => {
     return () => document.removeEventListener('visibilitychange', handler);
   }, [store.playState]);
 
-  // ── Cooldown ────────────────────────────────────────────────────
   const lastHandTime = useRef(0);
 
   const checkCooldown = useCallback((): boolean => {
@@ -131,7 +124,6 @@ export const useGameGuards = () => {
     return true;
   }, []);
 
-  // ── Pre-flight checks ──────────────────────────────────────────
   const preflight = useCallback(async (): Promise<PreFlightResult> => {
     const errors:   string[] = [];
     const warnings: string[] = [];
@@ -206,7 +198,6 @@ export const useGameGuards = () => {
     return { ok, errors, warnings };
   }, [store, isOnChain, chainId, ethBalance, publicClient, address, checkCooldown]);
 
-  // ── Leave game = auto-fold ─────────────────────────────────────
   const leaveGame = useCallback(async () => {
     const isActive = !['lobby', 'result'].includes(store.playState);
     if (!isActive) {

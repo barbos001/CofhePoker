@@ -17,7 +17,6 @@ async function main() {
   const address = await pvp.getAddress();
   console.log(`✅  CofhePokerPvP deployed at: ${address}`);
 
-  // ── Save deployment info ──────────────────────────────────────────
   const deploymentDir  = path.join(__dirname, "..", "deployments");
   const deploymentFile = path.join(deploymentDir, `${network}-pvp.json`);
   const configFile     = path.join(__dirname, "..", "src", "config", "contractPvP.ts");
@@ -33,7 +32,6 @@ async function main() {
   fs.writeFileSync(deploymentFile, JSON.stringify(deployment, null, 2));
   console.log(`\nSaved deployment to deployments/${network}-pvp.json`);
 
-  // ── Update src/config/contractPvP.ts ────────────────────────────
   if (fs.existsSync(configFile)) {
     let content = fs.readFileSync(configFile, "utf-8");
     content = content.replace(

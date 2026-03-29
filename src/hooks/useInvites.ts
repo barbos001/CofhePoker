@@ -16,7 +16,6 @@ export const useInvites = () => {
 
   const deployed = PVP_CONTRACT_ADDRESS !== '0x0000000000000000000000000000000000000000';
 
-  // ── Send game invite ──
   const sendInvite = useCallback(async (to: string, tableId: number) => {
     if (!deployed) return;
     LOG(`Inviting ${to.slice(0, 10)}… to table #${tableId}`);
@@ -29,7 +28,6 @@ export const useInvites = () => {
     LOG('Invite sent ✓');
   }, [deployed, writeContractAsync, publicClient, store]);
 
-  // ── Accept game invite ──
   const acceptInvite = useCallback(async (from: string) => {
     if (!deployed) return;
     LOG(`Accepting invite from ${from.slice(0, 10)}…`);
@@ -50,7 +48,6 @@ export const useInvites = () => {
     LOG('Invite accepted ✓');
   }, [deployed, writeContractAsync, publicClient, store, pvpStore]);
 
-  // ── Decline game invite ──
   const declineInvite = useCallback(async (from: string) => {
     if (!deployed) return;
     LOG(`Declining invite from ${from.slice(0, 10)}…`);
@@ -63,7 +60,6 @@ export const useInvites = () => {
     LOG('Invite declined');
   }, [deployed, writeContractAsync, publicClient, store]);
 
-  // ── Generate invite link ──
   const generateInviteLink = useCallback(async (tableId: number): Promise<string> => {
     if (!publicClient || !deployed) return '';
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

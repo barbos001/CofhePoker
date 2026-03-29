@@ -15,11 +15,9 @@ const loadWebSDK = async () => import('@cofhe/sdk/web');
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type CofheClient = any;
 
-// ── Logging helper ─────────────────────────────────────────────────
 const FHE = (...args: unknown[]) =>
   console.log('%c[FHE]', 'color:#B366FF;font-weight:bold', ...args);
 
-// ── MODULE-LEVEL SINGLETON STATE ────────────────────────────────────
 let _client: CofheClient | null = null;
 let _isReady = false;
 let _isLoading = false;
@@ -98,7 +96,6 @@ function _reset() {
   _notify();
 }
 
-// ── HOOK ──────────────────────────────────────────────────────────
 export const useCofhe = () => {
   const [, forceUpdate] = useState(0);
   const { data: walletClient } = useWalletClient();

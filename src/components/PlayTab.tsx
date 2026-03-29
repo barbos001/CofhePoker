@@ -14,7 +14,6 @@ import { CONTRACT_ADDRESS } from '@/config/contract';
 import { useMotionValue, useSpring } from 'framer-motion';
 import { useGameGuards, PreFlightResult } from '@/hooks/useGameGuards';
 
-// ── Phase Step Tracker ──────────────────────────────────────────────────
 const STEPS = [
   { key: 'deal',    label: 'DEAL',    states: ['dealing'] },
   { key: 'decrypt', label: 'DECRYPT', states: ['decrypting'] },
@@ -63,7 +62,6 @@ const PhaseTracker = ({ playState }: { playState: string }) => {
   );
 };
 
-// ── FHE Activity Feed ───────────────────────────────────────────────────
 const FHE_MESSAGES: Record<string, string[]> = {
   dealing: [
     'FHE.randomEuint64() — generating entropy…',
@@ -161,7 +159,6 @@ const FheActivityFeed = ({ playState }: { playState: string }) => {
   );
 };
 
-// ── Bot Scan Effect ─────────────────────────────────────────────────────
 const BotScanOverlay = ({ active }: { active: boolean }) => {
   if (!active) return null;
 
@@ -193,7 +190,6 @@ const BotScanOverlay = ({ active }: { active: boolean }) => {
   );
 };
 
-// ── Helper: hand name scramble ─────────────────────────────────────────
 const HandNameScramble = ({ name }: { name: string }) => {
   const [display, setDisplay] = useState('');
   const chars = '♠♥♦♣';
@@ -215,7 +211,6 @@ const HandNameScramble = ({ name }: { name: string }) => {
   return <span>{display}</span>;
 };
 
-// ── XP Progress Bar ────────────────────────────────────────────────────
 const XPBar = ({ handsPlayed }: { handsPlayed: number }) => {
   const level = Math.floor(handsPlayed / 5) + 1;
   const xpInLevel = (handsPlayed % 5) / 5;
@@ -248,7 +243,6 @@ const XPBar = ({ handsPlayed }: { handsPlayed: number }) => {
   );
 };
 
-// ── Streak Badge ───────────────────────────────────────────────────────
 const StreakBadge = ({ wins }: { wins: number }) => {
   if (wins < 2) return null;
 
@@ -269,7 +263,6 @@ const StreakBadge = ({ wins }: { wins: number }) => {
   );
 };
 
-// ── Animated Balance ───────────────────────────────────────────────────
 const AnimatedBalance = ({ value }: { value: number }) => {
   const [prev, setPrev] = useState(value);
   const [delta, setDelta] = useState(0);
@@ -314,7 +307,6 @@ const AnimatedBalance = ({ value }: { value: number }) => {
   );
 };
 
-// ── Magnetic Button ─────────────────────────────────────────────────────
 const MagneticBtn = ({
   children,
   onClick,
@@ -364,7 +356,6 @@ const MagneticBtn = ({
   );
 };
 
-// ── Payout Line ───────────────────────────────────────────────────────
 const PayoutLine = ({ label, value, delay }: { label: string; value: number; delay: number }) => {
   if (value === 0) return null;
   const isPos = value > 0;
@@ -383,7 +374,6 @@ const PayoutLine = ({ label, value, delay }: { label: string; value: number; del
   );
 };
 
-// ── Result overlay ────────────────────────────────────────────────────
 const ResultOverlay = () => {
   const { playState, handResult, balance, playerEval, botEval, resetToLobby, playerCards, botCards, lastPayout } = useGameStore();
   const { startHand } = useGameActions();
@@ -548,7 +538,6 @@ const ResultOverlay = () => {
   );
 };
 
-// ── Turn Timer ────────────────────────────────────────────────────────
 const TurnTimer = ({ seconds, active }: { seconds: number; active: boolean }) => {
   if (!active) return null;
 
@@ -593,7 +582,6 @@ const TurnTimer = ({ seconds, active }: { seconds: number; active: boolean }) =>
   );
 };
 
-// ── Pre-flight Errors/Warnings ────────────────────────────────────────
 const PreFlightBanner = ({ result }: { result: PreFlightResult | null }) => {
   if (!result || (result.ok && result.warnings.length === 0)) return null;
 
@@ -626,7 +614,6 @@ const PreFlightBanner = ({ result }: { result: PreFlightResult | null }) => {
   );
 };
 
-// ── Poker Table Background Pattern ─────────────────────────────────────
 const TablePattern = () => (
   <svg className="absolute inset-0 w-full h-full rounded-3xl" style={{ opacity: 0.04 }} preserveAspectRatio="none">
     <defs>
@@ -638,7 +625,6 @@ const TablePattern = () => (
   </svg>
 );
 
-// ── Beginner Mode Hint ────────────────────────────────────────────────
 const BeginnerHint = ({ playerCards }: { playerCards: number[] }) => {
   if (playerCards.length !== 3) return null;
   const { action, reason } = getOptimalAction(playerCards);
@@ -663,7 +649,6 @@ const BeginnerHint = ({ playerCards }: { playerCards: number[] }) => {
   );
 };
 
-// ── Dealer Qualifying Animation ──────────────────────────────────────
 const DealerQualifyingAnim = ({ active }: { active: boolean }) => {
   const [dots, setDots] = useState('.');
   const [glow, setGlow] = useState(false);
@@ -732,7 +717,6 @@ const DealerQualifyingAnim = ({ active }: { active: boolean }) => {
   );
 };
 
-// ── Pair Plus Selector ───────────────────────────────────────────────
 const PP_OPTIONS = [0, 5, 10, 25, 50] as const;
 const PP_LABELS: Record<number, string> = { 0: 'Skip', 5: '5', 10: '10', 25: '25', 50: '50' };
 
@@ -791,7 +775,6 @@ const PairPlusSelector = ({ value, onChange, balance }: { value: number; onChang
   );
 };
 
-// ── Main tab ──────────────────────────────────────────────────────────
 export const PlayTab = () => {
   const { playState, statusMsg, pot, balance, playerCards, botCards, history, pairPlusBet, setPairPlusBet } = useGameStore();
   const { startHand, play, fold, retryDecrypt, isOnChain } = useGameActions();
@@ -843,7 +826,6 @@ export const PlayTab = () => {
     }
   }, [preflight, startHand]);
 
-  // ── Lobby ─────────────────────────────────────────────────────────
   if (!isActive) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-112px)] py-12 relative overflow-hidden">
@@ -991,7 +973,6 @@ export const PlayTab = () => {
     );
   }
 
-  // ── Active game ────────────────────────────────────────────────────
   return (
     <div className="flex flex-col items-center w-full max-w-[960px] mx-auto py-6 px-4 relative min-h-[calc(100vh-112px)]">
       {/* Permit warning — blocks above everything when no permit */}

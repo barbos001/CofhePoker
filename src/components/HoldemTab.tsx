@@ -13,7 +13,6 @@ import { useMotionValue, useSpring } from 'framer-motion';
 import { useGameGuards, PreFlightResult } from '@/hooks/useGameGuards';
 import { getCardData } from '@/lib/poker';
 
-// ── Phase Step Tracker ──────────────────────────────────────────────────
 const STEPS = [
   { key: 'deal',    label: 'DEAL',     states: ['dealing', 'decrypting'] },
   { key: 'preflop', label: 'PRE-FLOP', states: ['playerTurn:preflop', 'botThinking:preflop'] },
@@ -65,7 +64,6 @@ const PhaseTracker = ({ playState, holdemRound }: { playState: string; holdemRou
   );
 };
 
-// ── FHE Activity Feed ───────────────────────────────────────────────────
 const FHE_MESSAGES: Record<string, string[]> = {
   dealing: [
     'FHE.randomEuint64() x 7 - generating entropy...',
@@ -154,7 +152,6 @@ const FheActivityFeed = ({ playState }: { playState: string }) => {
   );
 };
 
-// ── Bot Scan Effect ─────────────────────────────────────────────────────
 const BotScanOverlay = ({ active }: { active: boolean }) => {
   if (!active) return null;
   return (
@@ -181,7 +178,6 @@ const BotScanOverlay = ({ active }: { active: boolean }) => {
   );
 };
 
-// ── Animated Balance ───────────────────────────────────────────────────
 const AnimatedBalance = ({ value }: { value: number }) => {
   const [prev, setPrev] = useState(value);
   const [delta, setDelta] = useState(0);
@@ -220,7 +216,6 @@ const AnimatedBalance = ({ value }: { value: number }) => {
   );
 };
 
-// ── Magnetic Button ─────────────────────────────────────────────────────
 const MagneticBtn = ({
   children, onClick, disabled, className, style,
 }: {
@@ -258,7 +253,6 @@ const MagneticBtn = ({
   );
 };
 
-// ── XP Bar ──────────────────────────────────────────────────────────────
 const XPBar = ({ handsPlayed }: { handsPlayed: number }) => {
   const level = Math.floor(handsPlayed / 5) + 1;
   const xpInLevel = (handsPlayed % 5) / 5;
@@ -279,7 +273,6 @@ const XPBar = ({ handsPlayed }: { handsPlayed: number }) => {
   );
 };
 
-// ── Poker Table Background ─────────────────────────────────────────────
 const TablePattern = () => (
   <svg className="absolute inset-0 w-full h-full rounded-3xl" style={{ opacity: 0.04 }} preserveAspectRatio="none">
     <defs>
@@ -291,7 +284,6 @@ const TablePattern = () => (
   </svg>
 );
 
-// ── Turn Timer ──────────────────────────────────────────────────────────
 const TurnTimer = ({ seconds, active }: { seconds: number; active: boolean }) => {
   if (!active) return null;
   const urgent = seconds <= 10;
@@ -327,7 +319,6 @@ const TurnTimer = ({ seconds, active }: { seconds: number; active: boolean }) =>
   );
 };
 
-// ── Pre-flight Banner ──────────────────────────────────────────────────
 const PreFlightBanner = ({ result }: { result: PreFlightResult | null }) => {
   if (!result || (result.ok && result.warnings.length === 0)) return null;
   return (
@@ -351,7 +342,6 @@ const PreFlightBanner = ({ result }: { result: PreFlightResult | null }) => {
   );
 };
 
-// ── Hand Name Scramble ──────────────────────────────────────────────────
 const HandNameScramble = ({ name }: { name: string }) => {
   const [display, setDisplay] = useState('');
   const chars = '\u2660\u2665\u2666\u2663';
@@ -371,7 +361,6 @@ const HandNameScramble = ({ name }: { name: string }) => {
   return <span>{display}</span>;
 };
 
-// ── Result Overlay ─────────────────────────────────────────────────────
 const HoldemResultOverlay = () => {
   const { playState, handResult, balance, playerCards, botCards, communityCards, resetToLobby, playerEval, botEval } = useGameStore();
 
@@ -477,7 +466,6 @@ const HoldemResultOverlay = () => {
   );
 };
 
-// ── Main HoldemTab ─────────────────────────────────────────────────────
 export const HoldemTab = () => {
   const { playState, statusMsg, pot, balance, playerCards, botCards, communityCards, history, holdemRound, playerEval } = useGameStore();
   const { startHand, actPreflop, actFlop, actTurn, actRiver, callBot, fold, isOnChain } = useHoldemActions();
@@ -535,7 +523,6 @@ export const HoldemTab = () => {
     }
   }, [holdemRound, actPreflop, actFlop, actTurn, actRiver]);
 
-  // ── Lobby ─────────────────────────────────────────────────────────
   if (!isActive) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-112px)] py-12 relative overflow-hidden">
@@ -611,7 +598,6 @@ export const HoldemTab = () => {
     );
   }
 
-  // ── Active game ────────────────────────────────────────────────────
   return (
     <div className="flex flex-col items-center w-full max-w-[960px] mx-auto py-6 px-4 relative min-h-[calc(100vh-112px)]">
       <PermitWarningBanner />

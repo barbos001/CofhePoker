@@ -4,7 +4,6 @@ import { CONTRACT_ADDRESS } from '@/config/contract';
 
 const ETHERSCAN = 'https://sepolia.etherscan.io';
 
-// ── Expandable FAQ ────────────────────────────────────────────────────
 const FAQ = ({ q, a }: { q: string; a: string }) => {
   const [open, setOpen] = useState(false);
   return (
@@ -35,7 +34,6 @@ const FAQ = ({ q, a }: { q: string; a: string }) => {
   );
 };
 
-// ── Collapsible Section ─────────────────────────────────────────────
 const Section = ({
   title,
   children,
@@ -88,7 +86,6 @@ const Section = ({
   );
 };
 
-// ── Table Row ───────────────────────────────────────────────────────
 const TRow = ({ cells, header, highlight }: { cells: string[]; header?: boolean; highlight?: boolean }) => (
   <div
     className={`flex items-center gap-2 px-4 py-2.5 ${header ? 'font-mono text-[10px] tracking-widest uppercase' : 'font-satoshi text-sm'}`}
@@ -106,7 +103,6 @@ const TRow = ({ cells, header, highlight }: { cells: string[]; header?: boolean;
   </div>
 );
 
-// ── Code Block ──────────────────────────────────────────────────────
 const Code = ({ children }: { children: string }) => (
   <pre
     className="font-mono text-[11px] leading-relaxed p-4 rounded-xl overflow-x-auto"
@@ -116,7 +112,6 @@ const Code = ({ children }: { children: string }) => (
   </pre>
 );
 
-// ── Main ────────────────────────────────────────────────────────────
 export const HelpTab = () => {
   const deployed = CONTRACT_ADDRESS !== '0x0000000000000000000000000000000000000000';
 
