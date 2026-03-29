@@ -10,6 +10,7 @@ import { useAccount, useWriteContract, usePublicClient } from 'wagmi';
 import { useGameStore } from '@/store/useGameStore';
 import { HOLDEM_CONTRACT_ADDRESS, CIPHER_HOLDEM_ABI, HoldemState } from '@/config/contractHoldem';
 import { useCofhe } from './useCofhe';
+import { toast } from '@/components/ui/Toast';
 import { sleep } from '@/lib/utils';
 import { getCardData } from '@/lib/poker';
 import { evaluate7 } from '@/lib/holdem';
@@ -73,6 +74,7 @@ export const useHoldemActions = () => {
     ]);
     void receipt;
     TX(`${fnName}() — confirmed ${(performance.now() - t0).toFixed(0)}ms`);
+    toast.tx(`${fnName} confirmed`, hash);
     return hash;
   }, [writeContractAsync, publicClient]);
 

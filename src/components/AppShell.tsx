@@ -6,6 +6,8 @@ import { HelpTab }                 from './HelpTab';
 import { SettingsTab }             from './SettingsTab';
 import { WalletOverlay }           from './WalletOverlay';
 import { PermitExpiryToast }       from './ui/PermitIndicator';
+import { ToastContainer }          from './ui/Toast';
+import { useSounds }               from '@/hooks/useSounds';
 import { AnimatePresence, motion } from 'framer-motion';
 
 const FHE_ACTIVE_STATES = new Set(['dealing', 'decrypting', 'botThinking', 'showdown']);
@@ -48,6 +50,7 @@ const FheScanline = ({ active }: { active: boolean }) => (
 export const AppShell = () => {
   const { activeTab, playState } = useGameStore();
   const fheActive = FHE_ACTIVE_STATES.has(playState);
+  useSounds();
 
   return (
     <div className="min-h-screen bg-black text-white flex flex-col relative">
@@ -80,6 +83,7 @@ export const AppShell = () => {
       </AnimatePresence>
 
       <PermitExpiryToast />
+      <ToastContainer />
     </div>
   );
 };

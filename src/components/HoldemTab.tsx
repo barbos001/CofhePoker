@@ -10,6 +10,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useAccount } from 'wagmi';
 import { HOLDEM_CONTRACT_ADDRESS } from '@/config/contractHoldem';
 import { useMotionValue, useSpring } from 'framer-motion';
+import { FheProgressBar } from '@/components/ui/FheProgress';
 import { useGameGuards, PreFlightResult } from '@/hooks/useGameGuards';
 import { getCardData } from '@/lib/poker';
 
@@ -603,8 +604,9 @@ export const HoldemTab = () => {
       <PermitWarningBanner />
 
       {/* Phase tracker */}
-      <div className="mb-4 w-full flex justify-center">
+      <div className="mb-4 w-full flex justify-center flex-col items-center gap-2">
         <PhaseTracker playState={playState} holdemRound={holdemRound} />
+        <FheProgressBar playState={playState} />
       </div>
 
       {/* Badges */}

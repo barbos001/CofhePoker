@@ -13,6 +13,8 @@ import { useAccount } from 'wagmi';
 import { CONTRACT_ADDRESS } from '@/config/contract';
 import { useMotionValue, useSpring } from 'framer-motion';
 import { useGameGuards, PreFlightResult } from '@/hooks/useGameGuards';
+import { FheProgressBar } from '@/components/ui/FheProgress';
+import { CardSkeleton } from '@/components/ui/Skeleton';
 
 const STEPS = [
   { key: 'deal',    label: 'DEAL',    states: ['dealing'] },
@@ -980,8 +982,9 @@ export const PlayTab = () => {
 
       {/* Phase tracker — visible during active game */}
       {(playState as string) !== 'lobby' && (
-        <div className="mb-4 w-full flex justify-center">
+        <div className="mb-4 w-full flex justify-center flex-col items-center gap-2">
           <PhaseTracker playState={playState} />
+          <FheProgressBar playState={playState} />
         </div>
       )}
 

@@ -8,6 +8,7 @@ import { useAccount, useWriteContract, usePublicClient } from 'wagmi';
 import { useGameStore } from '@/store/useGameStore';
 import { CONTRACT_ADDRESS, CIPHER_POKER_ABI, GameState } from '@/config/contract';
 import { useCofhe } from './useCofhe';
+import { toast } from '@/components/ui/Toast';
 import { sleep } from '@/lib/utils';
 import { evaluateHand, getCardData } from '@/lib/poker';
 
@@ -72,6 +73,7 @@ export const useGameActions = () => {
     ]);
     void receipt;
     TX(`${fnName}() — confirmed in ${(performance.now() - t0).toFixed(0)}ms ✓`);
+    toast.tx(`${fnName} confirmed`, hash);
     return hash;
   }, [writeContractAsync, publicClient]);
 
