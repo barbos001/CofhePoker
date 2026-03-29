@@ -403,10 +403,20 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
             return;
           }
 
-          // COMPLETE or BOTH_SEATED — safe to auto-leave
-          if (state === HoldemPvPState.COMPLETE || state === HoldemPvPState.BOTH_SEATED) {
-            LOG(`Already seated at #${existingSeat} (state ${state}) — leaving first`);
-            addLog(`Leaving stale table #${existingSeat}...`);
+          if (state === HoldemPvPState.BOTH_SEATED) {
+            // Both players ready — just start the hand instead of leaving
+            LOG(`Both seated at #${existingSeat} — starting hand`);
+            setTableId(existingSeat);
+            setLobbyState('seated');
+            addLog(`Both seated at table #${existingSeat} — starting...`);
+            setLoading(false);
+            setTimeout(() => autoStartRef.current?.(), 300);
+            return;
+          }
+
+          if (state === HoldemPvPState.COMPLETE) {
+            LOG(`Completed table #${existingSeat} — leaving first`);
+            addLog(`Leaving completed table #${existingSeat}...`);
             await writeAndWait('leaveTable', [BigInt(existingSeat)]);
           }
         }
@@ -525,13 +535,15 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
       const info = await readContract('getTableInfo', [BigInt(tableId)]) as [string, string, number, bigint, bigint, bigint, boolean, string];
       const state = info[2];
       if (state === HoldemPvPState.OPEN) {
-        setError('Waiting for opponent to join');
+        // Still waiting — don't send TX, just go back to waiting UI
         setLobbyState('waiting');
+        setStatus('Waiting for opponent to join...');
         setLoading(false);
         return;
       }
       if (state !== HoldemPvPState.BOTH_SEATED && state !== HoldemPvPState.COMPLETE) {
-        setError('Game already in progress');
+        // Game already in progress — sync state instead of erroring
+        setLobbyState('playing');
         setLoading(false);
         return;
       }
