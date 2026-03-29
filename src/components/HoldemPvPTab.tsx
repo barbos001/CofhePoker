@@ -631,15 +631,16 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
 
   const handleLeave = useCallback(async () => {
     if (!tableId) return;
-    try {
-      // leaveTable handles forfeit automatically if game is active
-      await writeAndWait('leaveTable', [BigInt(tableId)]);
-      setTableId(null);
-      setLobbyState('idle');
-      setMyCards([]); setCommunityCards([]); setOppCards([]);
-      refreshLobby();
-    } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
-  }, [tableId, lobbyState, writeAndWait, refreshLobby, addLog]);
+    // Immediately go back to lobby — don't wait for TX
+    const tid = tableId;
+    setTableId(null);
+    setLobbyState('idle');
+    setMyCards([]); setCommunityCards([]); setOppCards([]);
+    setError('');
+    setStatus('');
+    // Fire TX in background
+    writeAndWait('leaveTable', [BigInt(tid)]).then(() => refreshLobby()).catch(() => {});
+  }, [tableId, writeAndWait, refreshLobby]);
 
   const actingRef = useRef(false);
   const handleAct = useCallback(async (action: number) => {
@@ -1296,11 +1297,11 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
           </button>
         )}
 
-        {/* Leave — always visible, forfeit if game active */}
-        <button onClick={handleLeave} disabled={loading}
-          className="font-mono text-[11px] tracking-wider mt-1 hover:text-red-400 transition-colors disabled:opacity-30"
-          style={{ color: 'var(--color-text-dark)' }}>
-          LEAVE TABLE (forfeit)
+        {/* Leave — always visible */}
+        <button onClick={handleLeave}
+          className="h-9 px-5 rounded-full font-mono text-xs tracking-wider uppercase mt-2 hover:bg-red-500/20 transition-all"
+          style={{ color: 'var(--color-danger)', border: '1px solid rgba(255,59,59,0.25)' }}>
+          LEAVE TABLE
         </button>
 
         {/* Activity Log */}
