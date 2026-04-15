@@ -166,6 +166,12 @@ export const useCofhe = () => {
     }
   }, [setPermitStatus, setPermitError]);
 
+  // Detects wallet rejections and expired/missing permit errors.
+  // These must NOT be retried — the user must re-sign before decryption can proceed.
+  const isPermitError = useCallback((msg: string): boolean =>
+    /user rejected|user denied|rejected the request|permit.*expir|not permitted|unauthorized|signature.*invalid|invalid.*signature/i.test(msg),
+  []);
+
   const decryptCard = useCallback(async (ctHash: bigint): Promise<number> => {
     if (!_client) throw new Error('CoFHE not initialised');
 
@@ -187,6 +193,14 @@ export const useCofhe = () => {
         return card;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
+        // Permit errors must not be retried — the permit is missing or was rejected.
+        // Set the store state so the PermitWarningBanner surfaces immediately.
+        if (isPermitError(msg)) {
+          FHE(`Decrypt blocked by permit error: ${msg}`);
+          setPermitStatus('expired');
+          setPermitError('Permit rejected or expired — re-sign your FHE permit to decrypt cards.');
+          throw err;
+        }
         const isTransient = /sealOutput|HTTP\s*[3-5]\d{2}|Failed to fetch|NetworkError|ETIMEDOUT/i.test(msg);
         if (isTransient && attempt < MAX_RETRIES) {
           const delay = BACKOFF[attempt];
@@ -198,7 +212,7 @@ export const useCofhe = () => {
       }
     }
     throw new Error('Decrypt retries exhausted');
-  }, [ensurePermit]);
+  }, [ensurePermit, isPermitError, setPermitStatus, setPermitError]);
 
   const decryptPublicCard = useCallback(async (ctHash: bigint): Promise<number> => {
     if (!_client) throw new Error('CoFHE not initialised');
@@ -221,6 +235,13 @@ export const useCofhe = () => {
         return card;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
+        // Permit errors must not be retried — surface immediately so the user can re-sign.
+        if (isPermitError(msg)) {
+          FHE(`Public card decrypt blocked by permit error: ${msg}`);
+          setPermitStatus('expired');
+          setPermitError('Permit rejected or expired — re-sign your FHE permit to decrypt cards.');
+          throw err;
+        }
         const isTransient = /sealOutput|HTTP\s*[3-5]\d{2}|Failed to fetch|NetworkError|ETIMEDOUT/i.test(msg);
         if (isTransient && attempt < MAX_RETRIES) {
           const delay = BACKOFF[attempt];
@@ -232,7 +253,53 @@ export const useCofhe = () => {
       }
     }
     throw new Error('Public card decrypt retries exhausted');
-  }, [ensurePermit]);
+  }, [ensurePermit, isPermitError, setPermitStatus, setPermitError]);
+
+  /**
+   * decryptForTx — fetches a plaintext decrypt result + FHE-network signature
+   * for on-chain publishing via FHE.publishDecryptResult().
+   *
+   * Does NOT require a user permit (the signature is from the FHE network, not
+   * the user's wallet). Use for bot-decision and showdown ebool handles.
+   *
+   * @param ctHash  — the handle returned by getBotDecryptHandle / getShowdownDecryptHandle
+   * @returns { result: bigint, signature: `0x${string}` }
+   */
+  const decryptForTx = useCallback(async (
+    ctHash: bigint,
+  ): Promise<{ result: bigint; signature: `0x${string}` }> => {
+    if (!_client) throw new Error('CoFHE not initialised');
+
+    FHE(`decryptForTx  ctHash=${ctHash.toString().slice(0, 12)}…`);
+    const t0 = performance.now();
+
+    const MAX_RETRIES = 8;
+    const BACKOFF = [3000, 5000, 8000, 10000, 12000, 15000, 20000, 25000];
+
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        // @cofhe/sdk ≥ 0.4 API: decryptForTx returns { result, signature }
+        // result  — plaintext bigint (0n or 1n for ebool, full value for euintN)
+        // signature — FHE-network attestation passed to FHE.publishDecryptResult()
+        const output = await _client
+          .decryptForTx(ctHash, FheTypes.Bool)
+          .execute() as { result: bigint; signature: `0x${string}` };
+        FHE(`decryptForTx → result=${output.result} (${(performance.now() - t0).toFixed(0)}ms${attempt > 0 ? `, attempt ${attempt + 1}` : ''})`);
+        return output;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const isTransient = /sealOutput|HTTP\s*[3-5]\d{2}|Failed to fetch|NetworkError|ETIMEDOUT/i.test(msg);
+        if (isTransient && attempt < MAX_RETRIES) {
+          const delay = BACKOFF[attempt];
+          FHE(`decryptForTx failed (${msg}) — retry ${attempt + 1}/${MAX_RETRIES} in ${delay / 1000}s…`);
+          await new Promise(r => setTimeout(r, delay));
+          continue;
+        }
+        throw err;
+      }
+    }
+    throw new Error('decryptForTx retries exhausted');
+  }, []);
 
   const checkHealth = useCallback(async (): Promise<boolean> => {
     try {
@@ -256,8 +323,10 @@ export const useCofhe = () => {
     isLoading:         _isLoading,
     error:             _error,
     ensurePermit,
+    isPermitError,
     decryptCard,
     decryptPublicCard,
+    decryptForTx,
     getOrCreateSelfPermit,
     removeActivePermit,
     checkHealth,

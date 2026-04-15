@@ -3,6 +3,8 @@ import { useAccount, useDisconnect } from 'wagmi';
 import { useGameStore }              from '@/store/useGameStore';
 import { useEffect, useState }      from 'react';
 import { PermitBadge, PermitDot }   from '@/components/ui/PermitIndicator';
+import { useVaultStore, formatEth, formatUsdt, ethWeiToUsd, usdtToUsd, formatUsd } from '@/store/useVaultStore';
+import { ETH_TOKEN, VAULT_DEPLOYED } from '@/config/vault';
 
 const truncateAddr = (addr: string) =>
   `${addr.slice(0, 6)}...${addr.slice(-4)}`;
@@ -46,10 +48,16 @@ export const TopBar = () => {
   const { activeTab, setActiveTab, balance, setAppState, history, playState } = useGameStore();
   const { address: walletAddr, isConnected } = useAccount();
   const { disconnect } = useDisconnect();
+  const { ethFree, usdtFree, ethUsdPrice, selectedToken, walletPanelOpen, setWalletPanelOpen, realMoneyMode } = useVaultStore();
 
-  const displayAddr = walletAddr ? truncateAddr(walletAddr) : '0x3f8a...9b2c';
+  const displayAddr = walletAddr ? truncateAddr(walletAddr) : 'Not connected';
   const wins = history.filter(h => h.result === 'WON').length;
   const winRate = history.length > 0 ? Math.round((wins / history.length) * 100) : 0;
+
+  // Vault balance display (ETH or USDT depending on selected token)
+  const vaultUsd = selectedToken === ETH_TOKEN
+    ? ethWeiToUsd(ethFree, ethUsdPrice)
+    : usdtToUsd(usdtFree);
 
   return (
     <header
@@ -151,7 +159,27 @@ export const TopBar = () => {
             </div>
           )}
 
-          {/* Balance */}
+          {/* Vault balance button (real-money mode) */}
+          {VAULT_DEPLOYED && isConnected && (
+            <button
+              onClick={() => setWalletPanelOpen(!walletPanelOpen)}
+              className="hidden sm:flex items-center gap-2 h-9 px-4 rounded-full font-mono text-xs font-bold tracking-wider transition-all"
+              style={{
+                background: realMoneyMode ? 'rgba(0,232,108,0.08)' : 'rgba(255,255,255,0.04)',
+                border:     realMoneyMode
+                  ? '1px solid rgba(0,232,108,0.25)'
+                  : '1px solid rgba(255,255,255,0.08)',
+                color: realMoneyMode ? 'var(--color-success)' : 'var(--color-text-muted)',
+              }}
+              title="Open Vault — deposit / withdraw real funds"
+            >
+              <span className="text-[11px]">◈</span>
+              {formatUsd(vaultUsd)}
+            </button>
+          )}
+
+          {/* Play-money chip balance */}
+          {!realMoneyMode && (
           <div
             className="hidden sm:flex items-center gap-2 h-9 px-4 rounded-full font-mono text-sm font-bold"
             style={{
@@ -171,6 +199,7 @@ export const TopBar = () => {
             <AnimatedChips value={balance} />
             <span className="text-[10px] tracking-wider opacity-60 ml-0.5">CHIPS</span>
           </div>
+          )}
 
           {/* Wallet */}
           <button

@@ -2,13 +2,31 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore, HandHistory } from '@/store/useGameStore';
 import { Card } from '@/components/ui/Card';
+import { StatsBar } from '@/components/ui/StatsBar';
+import { HandReplayModal } from '@/components/ui/HandReplayModal';
 
-const HistoryRow = ({ hand, index }: { hand: HandHistory; index: number }) => {
+// ─── Single hand row ──────────────────────────────────────────────────────────
+
+const HistoryRow = ({
+  hand,
+  index,
+  onReplay,
+}: {
+  hand: HandHistory;
+  index: number;
+  onReplay: (h: HandHistory) => void;
+}) => {
   const [expanded, setExpanded] = useState(false);
 
   const isWin  = hand.result === 'WON';
   const isFold = hand.result === 'FOLD';
   const isPush = hand.result === 'PUSH';
+
+  const resultColor =
+    isWin  ? 'var(--color-primary)' :
+    isPush ? '#888' :
+    isFold ? 'var(--color-text-secondary)' :
+             'var(--color-danger)';
 
   return (
     <motion.div
@@ -17,30 +35,25 @@ const HistoryRow = ({ hand, index }: { hand: HandHistory; index: number }) => {
       transition={{ delay: index * 0.04 }}
       style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
     >
+      {/* Summary row */}
       <div
-        className="flex items-center py-4 cursor-pointer px-3 transition-all rounded-lg"
+        className="flex items-center py-4 cursor-pointer px-3 transition-all rounded-lg gap-3"
         onClick={() => setExpanded(!expanded)}
-        style={{ background: 'transparent' }}
         onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
         onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+        style={{ background: 'transparent' }}
       >
-        <div className="font-mono text-xs min-w-[40px]" style={{ color: 'var(--color-text-dark)' }}>#{hand.id}</div>
+        <div className="font-mono text-xs min-w-[40px]" style={{ color: 'var(--color-text-dark)' }}>
+          #{hand.id}
+        </div>
         <div
-          className="font-mono text-xs font-bold min-w-[60px] tracking-wider uppercase"
-          style={{
-            color: isWin
-              ? 'var(--color-primary)'
-              : isPush
-                ? '#888'
-                : isFold
-                  ? 'var(--color-text-secondary)'
-                  : 'var(--color-danger)',
-          }}
+          className="font-mono text-xs font-bold min-w-[56px] tracking-wider uppercase"
+          style={{ color: resultColor }}
         >
           {hand.result}
         </div>
-        <div className="font-satoshi text-sm flex-1 truncate pr-4" style={{ color: 'var(--color-text-secondary)' }}>
-          {hand.desc}
+        <div className="font-satoshi text-sm flex-1 truncate pr-2" style={{ color: 'var(--color-text-secondary)' }}>
+          {hand.playerEval?.name ?? hand.desc}
         </div>
         <div
           className="font-mono text-sm font-bold"
@@ -50,19 +63,21 @@ const HistoryRow = ({ hand, index }: { hand: HandHistory; index: number }) => {
         </div>
         <motion.span
           animate={{ rotate: expanded ? 180 : 0 }}
-          className="ml-3 text-xs"
+          className="ml-1 text-xs shrink-0"
           style={{ color: 'var(--color-text-muted)' }}
         >
           ▾
         </motion.span>
       </div>
 
+      {/* Expanded detail */}
       <AnimatePresence>
         {expanded && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.22 }}
             className="overflow-hidden"
           >
             <div
@@ -75,31 +90,55 @@ const HistoryRow = ({ hand, index }: { hand: HandHistory; index: number }) => {
               {!isFold ? (
                 <>
                   <div className="flex flex-col items-center gap-2">
-                    <span className="font-mono text-[10px] tracking-widest uppercase" style={{ color: 'var(--color-text-muted)' }}>You</span>
+                    <span className="font-mono text-[10px] tracking-widest uppercase" style={{ color: 'var(--color-text-muted)' }}>
+                      You — {hand.playerEval?.name ?? ''}
+                    </span>
                     <div className="flex gap-1 transform scale-75 origin-top">
                       {hand.playerCards.map((id, i) => <Card key={i} id={id} state="faceUp" />)}
                     </div>
                   </div>
-                  <div className="font-mono text-sm" style={{ color: 'var(--color-text-dark)' }}>vs</div>
-                  <div className="flex flex-col items-center gap-2">
-                    <span className="font-mono text-[10px] tracking-widest uppercase" style={{ color: 'var(--color-text-muted)' }}>Bot</span>
-                    <div className="flex gap-1 transform scale-75 origin-top">
-                      {hand.botCards.map((id, i) => <Card key={i} id={id} state="faceUp" />)}
-                    </div>
-                  </div>
+                  {hand.botCards.length > 0 && (
+                    <>
+                      <div className="font-mono text-sm" style={{ color: 'var(--color-text-dark)' }}>vs</div>
+                      <div className="flex flex-col items-center gap-2">
+                        <span className="font-mono text-[10px] tracking-widest uppercase" style={{ color: 'var(--color-text-muted)' }}>
+                          Bot — {hand.botEval?.name ?? ''}
+                        </span>
+                        <div className="flex gap-1 transform scale-75 origin-top">
+                          {hand.botCards.map((id, i) => <Card key={i} id={id} state="faceUp" />)}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </>
               ) : (
                 <div className="font-mono text-xs py-4" style={{ color: 'var(--color-text-muted)' }}>
                   Hand folded. Cards encrypted forever.
                 </div>
               )}
-              <div className="w-full md:w-auto md:ml-auto flex flex-col items-end gap-1">
+
+              {/* Actions */}
+              <div className="w-full md:w-auto md:ml-auto flex flex-col items-end gap-2">
+                {/* REPLAY button */}
+                {!isFold && hand.playerCards.length > 0 && (
+                  <button
+                    onClick={e => { e.stopPropagation(); onReplay(hand); }}
+                    className="font-mono text-[10px] tracking-widest uppercase px-4 py-1.5 rounded-full transition-all hover:brightness-110"
+                    style={{
+                      color:      'var(--color-fhe)',
+                      border:     '1px solid rgba(179,102,255,0.25)',
+                      background: 'rgba(179,102,255,0.06)',
+                    }}
+                  >
+                    ▶ REPLAY
+                  </button>
+                )}
                 <a
                   href="#"
                   className="font-mono text-[10px] transition-colors hover:text-white"
                   style={{ color: 'var(--color-text-dark)' }}
                 >
-                  tx: {hand.txHash.substring(0, 10)}...
+                  tx: {hand.txHash.substring(0, 10)}…
                 </a>
               </div>
             </div>
@@ -110,38 +149,18 @@ const HistoryRow = ({ hand, index }: { hand: HandHistory; index: number }) => {
   );
 };
 
+// ─── Main tab ─────────────────────────────────────────────────────────────────
+
 export const HistoryTab = () => {
   const { history, setActiveTab } = useGameStore();
-
-  const played = history.length;
-  const wins = history.filter(h => h.result === 'WON').length;
-  const winRate = played > 0 ? Math.round((wins / played) * 100) : 0;
-  const totalDelta = history.reduce((acc, h) => acc + h.delta, 0);
+  const [replayHand, setReplayHand] = useState<HandHistory | null>(null);
 
   return (
     <div className="w-full max-w-[900px] mx-auto py-10 px-4 min-h-[calc(100vh-112px)]">
-      <h1 className="font-clash text-[48px] uppercase tracking-tight mb-8">HANDS</h1>
+      <h1 className="font-clash text-[48px] uppercase tracking-tight mb-6">HANDS</h1>
 
-      {/* Stats pills */}
-      <div className="flex flex-wrap gap-2 mb-10">
-        {[
-          { label: `${played} played`, color: 'rgba(255,255,255,0.6)' },
-          { label: `${winRate}% win rate`, color: 'var(--color-success)' },
-          { label: `${totalDelta >= 0 ? '+' : ''}${totalDelta} chips`, color: totalDelta >= 0 ? 'var(--color-primary)' : 'var(--color-danger)' },
-        ].map((s, i) => (
-          <div
-            key={i}
-            className="h-8 px-4 rounded-full font-mono text-xs font-bold tracking-wider flex items-center"
-            style={{
-              background: 'rgba(255,255,255,0.04)',
-              border:     '1px solid rgba(255,255,255,0.06)',
-              color:      s.color,
-            }}
-          >
-            {s.label}
-          </div>
-        ))}
-      </div>
+      {/* Rich stats bar */}
+      <StatsBar />
 
       {history.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24 text-center">
@@ -152,6 +171,7 @@ export const HistoryTab = () => {
           <button
             onClick={() => setActiveTab('play')}
             className="font-mono text-sm font-bold tracking-wider flex items-center gap-2 transition-colors hover:text-primary"
+            style={{ color: 'var(--color-text-secondary)' }}
           >
             <span style={{ color: 'var(--color-primary)' }}>▶</span> PLAY →
           </button>
@@ -159,10 +179,22 @@ export const HistoryTab = () => {
       ) : (
         <div className="flex flex-col">
           {history.map((hand, i) => (
-            <HistoryRow key={hand.id} hand={hand} index={i} />
+            <HistoryRow
+              key={hand.id}
+              hand={hand}
+              index={i}
+              onReplay={setReplayHand}
+            />
           ))}
         </div>
       )}
+
+      {/* Replay modal */}
+      <AnimatePresence>
+        {replayHand && (
+          <HandReplayModal hand={replayHand} onClose={() => setReplayHand(null)} />
+        )}
+      </AnimatePresence>
     </div>
   );
 };

@@ -7,6 +7,30 @@ import "@fhenixprotocol/cofhe-contracts/FHE.sol";
 /// @notice Multiplayer 3-card poker with FHE-encrypted cards, lobby, friends, and invites.
 ///         Each player can only decrypt their own cards. Nobody else — not the opponent,
 ///         not validators — can see a hand until showdown reveals the loser's cards.
+///
+/// @dev ACL policy — least-privilege design (no allowGlobal / allowTransient used):
+///   • FHE.allowThis(ct)       — grants the contract itself access for inter-tx evaluation.
+///   • FHE.allow(ct, player)   — grants exactly one player the ability to call decryptForView.
+///                               player1 cards are only accessible to player1; player2 cards
+///                               only to player2. Cross-player access is never granted.
+///   • FHE.allowPublic(ct)     — called only at game completion (fold or showdown) to make
+///                               cards observable to all. Never called before COMPLETE state.
+///
+///   allowGlobal and allowTransient are intentionally absent — same rationale as CofhePoker.
+///
+/// @dev Amount leakage note:
+///   All chip amounts (ANTE, pot, balances) are stored as plaintext uint256. There is no
+///   payable function and no msg.value usage — no real ETH moves. Virtual chips are an
+///   acceptable plaintext for MVP because they carry no monetary value on-chain. If real
+///   stakes are added in the future, bet sizes must be FHE-encrypted (euint64) to prevent
+///   opponents from deducing hand strength from bet amounts.
+///
+/// @dev Action privacy note:
+///   pvpAct(bool plays) submits the play/fold decision as a plaintext boolean. A validator
+///   or mempool observer can see player1's action before player2 submits. Both players have
+///   already acted independently (h.p1Acted / h.p2Acted guard double-submission), but the
+///   ordering leak remains. A future upgrade should accept an einput (FHE-encrypted bool)
+///   and use FHE.select to resolve the outcome without revealing individual decisions.
 contract CofhePokerPvP {
 
     //  State types
@@ -381,7 +405,7 @@ contract CofhePokerPvP {
             balances[t.player2] += t.pot;
             h.winner = t.player2;
             t.state  = PvPState.COMPLETE;
-            // Reveal P1's cards to both
+            // ACL: allowPublic at fold resolution — both hands broadcast so players can review.
             for (uint i = 0; i < 3; i++) FHE.allowPublic(h.p1Cards[i]);
             for (uint i = 0; i < 3; i++) FHE.allowPublic(h.p2Cards[i]);
             emit PvPHandComplete(tableId, t.player2, t.pot);
@@ -390,6 +414,7 @@ contract CofhePokerPvP {
             balances[t.player1] += t.pot;
             h.winner = t.player1;
             t.state  = PvPState.COMPLETE;
+            // ACL: allowPublic at fold resolution — both hands broadcast so players can review.
             for (uint i = 0; i < 3; i++) FHE.allowPublic(h.p1Cards[i]);
             for (uint i = 0; i < 3; i++) FHE.allowPublic(h.p2Cards[i]);
             emit PvPHandComplete(tableId, t.player1, t.pot);
@@ -400,11 +425,14 @@ contract CofhePokerPvP {
         }
     }
 
-    /// @notice Resolve showdown after FHE decrypt completes.
-    function resolvePvPShowdown(uint256 tableId) external inPvPState(tableId, PvPState.AWAITING_SHOWDOWN) {
+    /// @notice Resolve showdown using a client-supplied decrypt result.
+    ///         Call `getPvPShowdownHandle`, run `cofheClient.decryptForTx`,
+    ///         then submit result + signature for on-chain verification.
+    function resolvePvPShowdown(uint256 tableId, uint256 result, bytes calldata signature)
+        external inPvPState(tableId, PvPState.AWAITING_SHOWDOWN)
+    {
         PvPHand storage h = pvpHands[tableId];
-        (uint256 result, bool ready) = FHE.getDecryptResultSafe(h.showdownHandle);
-        require(ready, "Showdown not ready");
+        FHE.publishDecryptResult(h.showdownHandle, result, signature);
 
         PvPTable storage t = pvpTables[tableId];
         bool p1Wins = (result == 1);
@@ -417,7 +445,7 @@ contract CofhePokerPvP {
             h.winner = t.player2;
         }
 
-        // Reveal all cards
+        // ACL: allowPublic at showdown completion — both hands are now public record.
         for (uint i = 0; i < 3; i++) {
             FHE.allowPublic(h.p1Cards[i]);
             FHE.allowPublic(h.p2Cards[i]);
@@ -505,9 +533,10 @@ contract CofhePokerPvP {
         return false;
     }
 
-    function isPvPShowdownReady(uint256 tableId) external view returns (bool) {
-        (, bool ready) = FHE.getDecryptResultSafe(pvpHands[tableId].showdownHandle);
-        return ready;
+    /// @notice Returns the ciphertext handle the client passes to cofheClient.decryptForTx()
+    ///         in order to obtain the PvP showdown result + FHE-network signature.
+    function getPvPShowdownHandle(uint256 tableId) external view returns (uint256) {
+        return uint256(pvpHands[tableId].showdownHandle);
     }
 
     function getInviteCode(uint256 tableId) external view returns (bytes32) {
@@ -531,12 +560,12 @@ contract CofhePokerPvP {
 
             if (i < 3) {
                 h.p1Cards[i] = card;
-                FHE.allowThis(card);
-                FHE.allow(card, t.player1);    // ONLY player1 can decrypt
+                FHE.allowThis(card);           // ACL: contract needs access for _evaluateHand
+                FHE.allow(card, t.player1);    // ACL: only player1 may call decryptForView — player2 never granted
             } else {
                 h.p2Cards[i - 3] = card;
-                FHE.allowThis(card);
-                FHE.allow(card, t.player2);    // ONLY player2 can decrypt
+                FHE.allowThis(card);           // ACL: contract needs access for _evaluateHand
+                FHE.allow(card, t.player2);    // ACL: only player2 may call decryptForView — player1 never granted
             }
         }
     }
@@ -586,7 +615,7 @@ contract CofhePokerPvP {
             )
         );
 
-        FHE.allowThis(score);
+        FHE.allowThis(score); // ACL: contract needs the score ciphertext in _pvpShowdown
         return score;
     }
 
@@ -599,9 +628,9 @@ contract CofhePokerPvP {
         h.p2Score = p2Score;
 
         ebool p1Wins = FHE.gt(p1Score, p2Score);
-        FHE.allowThis(p1Wins);
+        FHE.allowThis(p1Wins); // ACL: contract verifies result in resolvePvPShowdown via publishDecryptResult
 
+        // Store handle so client can call getPvPShowdownHandle → decryptForTx → resolvePvPShowdown
         h.showdownHandle = ebool.unwrap(p1Wins);
-        FHE.decrypt(p1Wins);
     }
 }

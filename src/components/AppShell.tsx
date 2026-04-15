@@ -5,14 +5,17 @@ import { HistoryTab }              from './HistoryTab';
 import { HelpTab }                 from './HelpTab';
 import { SettingsTab }             from './SettingsTab';
 import { WalletOverlay }           from './WalletOverlay';
+import { WalletPanel }             from './ui/WalletPanel';
 import { PermitExpiryToast }       from './ui/PermitIndicator';
 import { ToastContainer }          from './ui/Toast';
 import { useSounds }               from '@/hooks/useSounds';
+import { useVault }                from '@/hooks/useVault';
 import { AnimatePresence, motion } from 'framer-motion';
 
 export const AppShell = () => {
   const { activeTab } = useGameStore();
   useSounds();
+  useVault(); // initializes vault balance polling
 
   return (
     <div className="min-h-screen bg-black text-white flex flex-col relative">
@@ -45,6 +48,11 @@ export const AppShell = () => {
 
       <PermitExpiryToast />
       <ToastContainer />
+
+      {/* Real-money vault panel (global modal) */}
+      <AnimatePresence>
+        <WalletPanel key="wallet-panel" />
+      </AnimatePresence>
     </div>
   );
 };

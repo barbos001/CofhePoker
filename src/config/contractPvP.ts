@@ -167,7 +167,11 @@ export const CIPHER_POKER_PVP_ABI = [
     name: 'resolvePvPShowdown',
     type: 'function',
     stateMutability: 'nonpayable',
-    inputs: [{ name: 'tableId', type: 'uint256' }],
+    inputs: [
+      { name: 'tableId',   type: 'uint256' },
+      { name: 'result',    type: 'uint256' },
+      { name: 'signature', type: 'bytes'   },
+    ],
     outputs: [],
   },
 
@@ -251,11 +255,11 @@ export const CIPHER_POKER_PVP_ABI = [
     outputs: [{ name: '', type: 'bool' }],
   },
   {
-    name: 'isPvPShowdownReady',
+    name: 'getPvPShowdownHandle',
     type: 'function',
     stateMutability: 'view',
     inputs: [{ name: 'tableId', type: 'uint256' }],
-    outputs: [{ name: '', type: 'bool' }],
+    outputs: [{ name: '', type: 'uint256' }],
   },
   {
     name: 'balances',

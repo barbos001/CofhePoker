@@ -7,6 +7,21 @@ import "@fhenixprotocol/cofhe-contracts/FHE.sol";
 /// @notice 3-card poker game where all card values are FHE-encrypted.
 ///         Nobody — not validators, not the opponent, not the contract itself —
 ///         can see a player's cards. Only the player can decrypt via a wallet permit.
+///
+/// @dev ACL policy — least-privilege design (no allowGlobal / allowTransient used):
+///   • FHE.allowThis(ct)      — grants the contract itself access to a ciphertext so
+///                              it can use the value in future transactions (e.g. hand
+///                              evaluation, score comparison). Revoked implicitly once
+///                              the ciphertext is no longer needed.
+///   • FHE.allow(ct, player)  — grants exactly one address (the player who owns the
+///                              card) the right to call decryptForView. No other address
+///                              can decrypt. Used only during _dealCards.
+///   • FHE.allowPublic(ct)    — called only at game completion to broadcast the winning
+///                              or losing hand to all observers. Never called mid-game.
+///
+///   allowGlobal and allowTransient are intentionally absent: allowGlobal would expose
+///   ciphertexts to any contract on-chain (too broad); allowTransient is unnecessary
+///   because all inter-tx ciphertext use is handled through allowThis.
 contract CofhePoker {
 
     //  State types
@@ -49,8 +64,9 @@ contract CofhePoker {
     mapping(address => uint256) public balances;   // virtual chip balances
 
     uint256 public nextTableId = 1;
-    uint256 public constant ANTE           = 10;
+    uint256 public constant ANTE            = 10;
     uint256 public constant INITIAL_BALANCE = 1000;
+    uint256 public constant FAUCET_THRESHOLD = 200;  // claimable when balance < this
 
     //  Events
 
@@ -156,15 +172,17 @@ contract CofhePoker {
         emit HandComplete(tableId, address(this), t.pot);
     }
 
-    /// @notice Resolve bot decision after CoFHE has decrypted shouldPlay.
-    ///         Anyone can call; safe because it only reads CoFHE state.
-    function resolveBotDecision(uint256 tableId)
+    /// @notice Resolve bot decision using a client-supplied decrypt result.
+    ///         The caller fetches `getBotDecryptHandle`, calls `cofheClient.decryptForTx`,
+    ///         then submits result + FHE-network signature here for on-chain verification.
+    ///         Anyone can call; the signature guarantees authenticity.
+    function resolveBotDecision(uint256 tableId, uint256 result, bytes calldata signature)
         external
         inState(tableId, GameState.AWAITING_BOT)
     {
         Hand storage h = hands[tableId];
-        (uint256 result, bool ready) = FHE.getDecryptResultSafe(h.botDecryptHandle);
-        require(ready, "Bot decision not ready yet");
+        // Verify the FHE network's attestation before trusting the plaintext result.
+        FHE.publishDecryptResult(h.botDecryptHandle, result, signature);
 
         bool botPlays = (result == 1);
 
@@ -175,7 +193,8 @@ contract CofhePoker {
             balances[t.player] += t.pot;
             h.winner            = t.player;
             t.state             = GameState.COMPLETE;
-            // Reveal player's cards (they won)
+            // ACL: allowPublic only at game-end — broadcasts winner's cards to all observers.
+            // Bot cards are NOT revealed (bot folded; no showdown obligation).
             for (uint i = 0; i < 3; i++) {
                 FHE.allowPublic(h.playerCards[i]);
             }
@@ -189,15 +208,16 @@ contract CofhePoker {
         }
     }
 
-    /// @notice Resolve showdown after CoFHE has decrypted playerWins.
-    ///         Anyone can call; safe because it only reads CoFHE state.
-    function resolveShowdown(uint256 tableId)
+    /// @notice Resolve showdown using a client-supplied decrypt result.
+    ///         Same pattern as resolveBotDecision — call `getShowdownDecryptHandle`,
+    ///         run `cofheClient.decryptForTx`, then submit result + signature.
+    ///         Anyone can call; the signature guarantees authenticity.
+    function resolveShowdown(uint256 tableId, uint256 result, bytes calldata signature)
         external
         inState(tableId, GameState.AWAITING_SHOWDOWN)
     {
         Hand storage h = hands[tableId];
-        (uint256 result, bool ready) = FHE.getDecryptResultSafe(h.showdownDecryptHandle);
-        require(ready, "Showdown not ready yet");
+        FHE.publishDecryptResult(h.showdownDecryptHandle, result, signature);
 
         Table storage t = tables[tableId];
         bool playerWins = (result == 1);
@@ -205,13 +225,13 @@ contract CofhePoker {
         if (playerWins) {
             balances[t.player] += t.pot;
             h.winner            = t.player;
-            // Reveal winner's cards
+            // ACL: allowPublic at showdown — player won, reveal their hand. Bot hand stays hidden.
             for (uint i = 0; i < 3; i++) {
                 FHE.allowPublic(h.playerCards[i]);
             }
         } else {
             h.winner = address(this); // bot wins
-            // Reveal bot's cards
+            // ACL: allowPublic at showdown — bot won, reveal bot's hand. Player hand stays hidden.
             for (uint i = 0; i < 3; i++) {
                 FHE.allowPublic(h.botCards[i]);
             }
@@ -282,16 +302,22 @@ contract CofhePoker {
         return tableOf[msg.sender];
     }
 
-    /// @notice Poll whether the bot-decision decrypt is ready.
-    function isBotDecisionReady(uint256 tableId) external view returns (bool) {
-        (, bool ready) = FHE.getDecryptResultSafe(hands[tableId].botDecryptHandle);
-        return ready;
+    /// @notice Refill chips to INITIAL_BALANCE when balance falls below FAUCET_THRESHOLD.
+    ///         Testnet / demo only — no cooldown, no rate-limiting.
+    function claimFaucet() external {
+        require(balances[msg.sender] < FAUCET_THRESHOLD, "Balance too high for faucet");
+        balances[msg.sender] = INITIAL_BALANCE;
     }
 
-    /// @notice Poll whether the showdown decrypt is ready.
-    function isShowdownReady(uint256 tableId) external view returns (bool) {
-        (, bool ready) = FHE.getDecryptResultSafe(hands[tableId].showdownDecryptHandle);
-        return ready;
+    /// @notice Returns the ciphertext handle the client passes to cofheClient.decryptForTx()
+    ///         in order to obtain the bot-decision result + FHE-network signature.
+    function getBotDecryptHandle(uint256 tableId) external view returns (uint256) {
+        return uint256(hands[tableId].botDecryptHandle);
+    }
+
+    /// @notice Returns the ciphertext handle for the showdown comparison decrypt.
+    function getShowdownDecryptHandle(uint256 tableId) external view returns (uint256) {
+        return uint256(hands[tableId].showdownDecryptHandle);
     }
 
     //  Internal FHE logic
@@ -317,11 +343,11 @@ contract CofhePoker {
 
             if (i < 3) {
                 h.playerCards[i] = card;
-                FHE.allowThis(card);             // contract can use next tx
-                FHE.allow(card, t.player);       // player can decrypt their cards
+                FHE.allowThis(card);        // ACL: contract needs access for _evaluateHand next tx
+                FHE.allow(card, t.player); // ACL: only this player may call decryptForView — no other address granted
             } else {
                 h.botCards[i - 3] = card;
-                FHE.allowThis(card);             // contract evaluates bot hand later
+                FHE.allowThis(card);        // ACL: contract evaluates bot hand in _botDecide; player never receives access
             }
         }
     }
@@ -388,7 +414,7 @@ contract CofhePoker {
             )
         );
 
-        FHE.allowThis(score);
+        FHE.allowThis(score); // ACL: contract needs the score ciphertext in _botDecide / _showdown
         return score;
     }
 
@@ -402,11 +428,10 @@ contract CofhePoker {
 
         // Bot plays if pair or better (score >= 100)
         ebool shouldPlay = FHE.gte(botScore, FHE.asEuint64(100));
-        FHE.allowThis(shouldPlay);
+        FHE.allowThis(shouldPlay); // ACL: contract verifies result in resolveBotDecision via publishDecryptResult
 
-        // Store ctHash for polling in resolveBotDecision
+        // Store handle so client can call getBotDecryptHandle → decryptForTx → resolveBotDecision
         h.botDecryptHandle = ebool.unwrap(shouldPlay);
-        FHE.decrypt(shouldPlay);
     }
 
     /// @dev Evaluate player hand, compare with bot score, queue async decrypt.
@@ -419,9 +444,9 @@ contract CofhePoker {
 
         // Player wins if their score strictly beats bot
         ebool playerWins = FHE.gt(playerScore, h.botScore);
-        FHE.allowThis(playerWins);
+        FHE.allowThis(playerWins); // ACL: contract verifies result in resolveShowdown via publishDecryptResult
 
+        // Store handle so client can call getShowdownDecryptHandle → decryptForTx → resolveShowdown
         h.showdownDecryptHandle = ebool.unwrap(playerWins);
-        FHE.decrypt(playerWins);
     }
 }

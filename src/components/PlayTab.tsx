@@ -6,6 +6,7 @@ import { Card }           from '@/components/ui/Card';
 import { TypewriterText, NumberScramble } from '@/components/ui/TextFX';
 import { DecoShapes }     from '@/components/ui/DecoShapes';
 import { PermitWarningBanner } from '@/components/ui/PermitIndicator';
+import { PermitExplainerModal } from '@/components/ui/PermitExplainerModal';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { getOptimalAction } from '@/lib/poker';
@@ -15,6 +16,10 @@ import { useMotionValue, useSpring } from 'framer-motion';
 import { useGameGuards, PreFlightResult } from '@/hooks/useGameGuards';
 import { FheProgressBar } from '@/components/ui/FheProgress';
 import { CardSkeleton } from '@/components/ui/Skeleton';
+import { ChipFaucet } from '@/components/ui/ChipFaucet';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { useVaultStore, formatEth, formatUsdt, ethWeiToUsd, usdtToUsd, formatUsd, usdToEthWei } from '@/store/useVaultStore';
+import { ETH_TOKEN, VAULT_DEPLOYED } from '@/config/vault';
 
 const STEPS = [
   { key: 'deal',    label: 'DEAL',    states: ['dealing'] },
@@ -719,6 +724,96 @@ const DealerQualifyingAnim = ({ active }: { active: boolean }) => {
   );
 };
 
+// ─── Game mode selector ───────────────────────────────────────────────────────
+
+const GameModeSelector = () => {
+  const {
+    realMoneyMode, setRealMoneyMode,
+    setWalletPanelOpen,
+    ethFree, usdtFree, ethUsdPrice,
+    selectedToken,
+    freeUsd,
+  } = useVaultStore();
+
+  const ANTE_USD = 10n * 10n ** 18n; // $10 ante in 18-dec USD
+
+  const vaultUsd = freeUsd(selectedToken);
+  const canPlayRealMoney = VAULT_DEPLOYED && vaultUsd >= ANTE_USD;
+
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <span className="font-mono text-[9px] tracking-widest uppercase" style={{ color: 'rgba(255,255,255,0.2)' }}>
+        Game Mode
+      </span>
+      <div
+        className="flex gap-1 p-1 rounded-full"
+        style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}
+      >
+        {/* Play Money */}
+        <button
+          onClick={() => setRealMoneyMode(false)}
+          className="px-5 py-1.5 rounded-full font-mono text-[11px] tracking-widest uppercase font-bold transition-all"
+          style={{
+            background: !realMoneyMode ? 'rgba(255,224,61,0.12)' : 'transparent',
+            border:     !realMoneyMode ? '1px solid rgba(255,224,61,0.3)' : '1px solid transparent',
+            color:      !realMoneyMode ? 'var(--color-primary)' : 'rgba(255,255,255,0.3)',
+          }}
+        >
+          ◈ Play Money
+        </button>
+
+        {/* Real Money */}
+        <button
+          onClick={() => {
+            if (!VAULT_DEPLOYED) return;
+            setRealMoneyMode(true);
+            if (!canPlayRealMoney) setWalletPanelOpen(true);
+          }}
+          disabled={!VAULT_DEPLOYED}
+          className="px-5 py-1.5 rounded-full font-mono text-[11px] tracking-widest uppercase font-bold transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+          style={{
+            background: realMoneyMode ? 'rgba(0,232,108,0.1)' : 'transparent',
+            border:     realMoneyMode ? '1px solid rgba(0,232,108,0.3)' : '1px solid transparent',
+            color:      realMoneyMode ? 'var(--color-success)' : 'rgba(255,255,255,0.3)',
+          }}
+          title={!VAULT_DEPLOYED ? 'Deploy Vault contract first' : undefined}
+        >
+          $ Real Money
+        </button>
+      </div>
+
+      {/* Vault balance hint when real money is selected */}
+      {realMoneyMode && VAULT_DEPLOYED && (
+        <motion.div
+          initial={{ opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-center gap-2 font-mono text-[10px] tracking-wider"
+          style={{ color: canPlayRealMoney ? 'var(--color-success)' : 'var(--color-danger)' }}
+        >
+          {canPlayRealMoney ? (
+            <>
+              <span>Vault balance: {formatUsd(vaultUsd)}</span>
+              <span style={{ opacity: 0.4 }}>·</span>
+              <span>Ante: $10</span>
+            </>
+          ) : (
+            <>
+              <span>Insufficient vault balance (min $10)</span>
+              <button
+                onClick={() => setWalletPanelOpen(true)}
+                className="underline underline-offset-2 hover:brightness-125 transition-all"
+                style={{ color: 'var(--color-primary)' }}
+              >
+                Top up →
+              </button>
+            </>
+          )}
+        </motion.div>
+      )}
+    </div>
+  );
+};
+
 const PP_OPTIONS = [0, 5, 10, 25, 50] as const;
 const PP_LABELS: Record<number, string> = { 0: 'Skip', 5: '5', 10: '10', 25: '25', 50: '50' };
 
@@ -780,8 +875,14 @@ const PairPlusSelector = ({ value, onChange, balance }: { value: number; onChang
 export const PlayTab = () => {
   const { playState, statusMsg, pot, balance, playerCards, botCards, history, pairPlusBet, setPairPlusBet } = useGameStore();
   const { startHand, play, fold, retryDecrypt, isOnChain } = useGameActions();
+  const { showHints } = useKeyboardShortcuts({ play, fold });
   const { isConnected } = useAccount();
   const contractDeployed = CONTRACT_ADDRESS !== '0x0000000000000000000000000000000000000000';
+  const {
+    realMoneyMode, selectedToken, ethUsdPrice,
+    ethFree, freeUsd,
+    setWalletPanelOpen,
+  } = useVaultStore();
   const { preflight, leaveGame, setFoldFn, turnTimeLeft, turnTimerActive } = useGameGuards();
 
   // Beginner mode — persisted in localStorage
@@ -914,6 +1015,16 @@ export const PlayTab = () => {
           </button>
         </motion.div>
 
+        {/* ── Game Mode selector ── */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.4 }}
+          className="z-10 mb-6"
+        >
+          <GameModeSelector />
+        </motion.div>
+
         {/* Pre-flight errors / warnings */}
         <AnimatePresence>
           <PreFlightBanner result={preFlightResult} />
@@ -949,9 +1060,26 @@ export const PlayTab = () => {
             className="w-2 h-2 rounded-full"
             style={{ background: 'var(--color-primary)', boxShadow: '0 0 6px rgba(255,224,61,0.5)' }}
           />
-          <AnimatedBalance value={balance} /> chips · Ante: 10{pairPlusBet > 0 ? ` + PP: ${pairPlusBet}` : ''}
+          {realMoneyMode ? (
+            <>
+              <span style={{ color: 'var(--color-success)' }}>$ {formatUsd(freeUsd(selectedToken))}</span>
+              <span style={{ opacity: 0.4 }}>·</span>
+              <span>Ante: $10 → {selectedToken === ETH_TOKEN
+                ? `${formatEth(usdToEthWei(10n * 10n**18n, ethUsdPrice))} ETH`
+                : '10 USDT'}</span>
+            </>
+          ) : (
+            <>
+              <AnimatedBalance value={balance} /> chips · Ante: 10{pairPlusBet > 0 ? ` + PP: ${pairPlusBet}` : ''}
+            </>
+          )}
           {isOnChain && <span style={{ color: 'var(--color-fhe)' }}>· Sepolia</span>}
         </motion.div>
+
+        {/* Low-balance faucet */}
+        <AnimatePresence>
+          <ChipFaucet />
+        </AnimatePresence>
 
         {/* Contract missing notice */}
         {!contractDeployed && (
@@ -979,6 +1107,9 @@ export const PlayTab = () => {
     <div className="flex flex-col items-center w-full max-w-[960px] mx-auto py-6 px-4 relative min-h-[calc(100vh-112px)]">
       {/* Permit warning — blocks above everything when no permit */}
       <PermitWarningBanner />
+
+      {/* First-reveal explainer — shown once before the player's first decrypt */}
+      <PermitExplainerModal />
 
       {/* Phase tracker — visible during active game */}
       {(playState as string) !== 'lobby' && (
@@ -1296,6 +1427,31 @@ export const PlayTab = () => {
 
       <AnimatePresence>
         <ResultOverlay />
+      </AnimatePresence>
+
+      {/* Keyboard shortcut hint overlay — shown on [?] press or auto during playerTurn */}
+      <AnimatePresence>
+        {showHints && playState === 'playerTurn' && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            transition={{ duration: 0.18 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-5 py-2.5 rounded-full font-mono text-[10px] tracking-widest uppercase"
+            style={{
+              background: 'rgba(10,10,18,0.92)',
+              border:     '1px solid rgba(255,255,255,0.1)',
+              backdropFilter: 'blur(8px)',
+              color: 'rgba(255,255,255,0.5)',
+            }}
+          >
+            <span><span style={{ color: 'var(--color-success)' }}>[P]</span> PLAY</span>
+            <span style={{ opacity: 0.3 }}>·</span>
+            <span><span style={{ color: 'var(--color-danger)' }}>[F]</span> FOLD</span>
+            <span style={{ opacity: 0.3 }}>·</span>
+            <span><span style={{ color: 'rgba(255,255,255,0.4)' }}>[?]</span> HINTS</span>
+          </motion.div>
+        )}
       </AnimatePresence>
     </div>
   );

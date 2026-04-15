@@ -49,7 +49,7 @@ export const useGameActions = () => {
   const store                    = useGameStore();
   const { address, isConnected } = useAccount();
   const publicClient             = usePublicClient();
-  const { decryptCard, decryptPublicCard, ensurePermit } = useCofhe();
+  const { decryptCard, decryptPublicCard, decryptForTx, ensurePermit, isPermitError } = useCofhe();
   const { writeContractAsync }   = useWriteContract();
 
   const contractDeployed = CONTRACT_ADDRESS !== '0x0000000000000000000000000000000000000000';
@@ -336,18 +336,34 @@ export const useGameActions = () => {
       const errMsg = err instanceof Error ? err.message : String(err);
       GAME('startHand FAILED:', errMsg);
 
+      // Distinguish permit failures from generic network/FHE errors so the UX
+      // surfaces the right recovery action (re-sign vs. retry vs. start over).
+      const permitFailed =
+        isPermitError(errMsg) ||
+        useGameStore.getState().permitStatus === 'error' ||
+        useGameStore.getState().permitStatus === 'expired';
+
       if (pendingCtHashes.current) {
-        // Transactions succeeded and we have encrypted cards on-chain —
-        // keep the game alive regardless of error type (FHE down, permit rejected, network, etc.)
-        GAME('Decrypt/permit failed but hand exists on-chain — keeping alive for retry');
+        // Hand exists on-chain — keep the game alive so the player can retry or fold
+        // without losing their ante. The specific status message tells them what to do.
+        GAME('Hand exists on-chain — keeping alive for retry');
         store.setPlayState('decrypting');
-        store.setStatus('Decryption failed — tap RETRY or FOLD below', '#FF8C42');
+        if (permitFailed) {
+          store.setStatus('Permit rejected — sign your FHE permit above, then tap RETRY', '#FF8C42');
+        } else {
+          store.setStatus('Decryption failed — tap RETRY or FOLD below', '#FF8C42');
+        }
+      } else if (permitFailed) {
+        // Permit rejected before any on-chain state was created — nothing to recover.
+        GAME('Permit rejected before hand creation — returning to lobby');
+        store.setStatus('Permit required — sign your FHE permit to play.', '#FF3B3B');
+        store.setPlayState('lobby');
       } else {
         store.setStatus('Error — please try again.', '#FF3B3B');
         store.setPlayState('lobby');
       }
     }
-  }, [isOnChain, store, writeAndWait, publicClient, getChainTableId, readBalance, _decryptAndReveal, address, getTableState, foldStuckHand]);
+  }, [isOnChain, store, writeAndWait, publicClient, getChainTableId, readBalance, _decryptAndReveal, address, getTableState, foldStuckHand, isPermitError]);
 
   const play = useCallback(async () => {
     if (!isOnChain) return;
@@ -363,32 +379,28 @@ export const useGameActions = () => {
       });
 
       store.setPlayState('botThinking');
-      store.setStatus('Bot evaluating hand (FHE)… 0s', '#888888');
-      GAME('Waiting for bot FHE decision…');
+      store.setStatus('Bot evaluating hand (FHE)…', '#888888');
+      GAME('Fetching bot-decision ciphertext handle…');
 
-      // Wait for CoFHE to finish the bot-score decrypt (~30-60s on testnet)
-      const botReady = await pollUntilTrue('bot decision', () =>
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        publicClient!.readContract({
-          address: CONTRACT_ADDRESS, abi: CIPHER_POKER_ABI,
-          functionName: 'isBotDecisionReady', args: [tableId],
-          account: address,
-        } as any) as Promise<boolean>,
-        POLL_MS, MAX_POLLS,
-        (sec) => store.setStatus(`Bot evaluating hand (FHE)… ${sec}s`, '#888888'),
-      );
+      // Step 1 — read the ciphertext handle the bot-decision ebool was stored under
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const botHandle = await publicClient!.readContract({
+        address: CONTRACT_ADDRESS, abi: CIPHER_POKER_ABI,
+        functionName: 'getBotDecryptHandle', args: [tableId],
+        account: address,
+      } as any) as bigint;
+      GAME(`Bot handle: ${botHandle.toString().slice(0, 12)}…`);
 
-      if (!botReady) {
-        GAME('Bot decision TIMED OUT');
-        store.setStatus('Opponent decision timed out. Refresh and retry.', '#FF3B3B');
-        return;
-      }
+      // Step 2 — ask the FHE network to decrypt (decryptForTx, no user permit needed)
+      store.setStatus('FHE network decrypting bot decision…', '#888888');
+      const { result: botResult, signature: botSig } = await decryptForTx(botHandle);
+      GAME(`Bot decryptForTx → result=${botResult}`);
 
-      // Resolve bot decision (anyone can call — no auth required)
+      // Step 3 — submit result + FHE-network signature; contract verifies on-chain
       store.setStatus('Resolving bot decision…', '#B366FF');
       const resolveBotHash = await writeAndWait('resolveBotDecision', {
         address: CONTRACT_ADDRESS, abi: CIPHER_POKER_ABI,
-        functionName: 'resolveBotDecision', args: [tableId],
+        functionName: 'resolveBotDecision', args: [tableId, botResult, botSig],
       });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -408,39 +420,41 @@ export const useGameActions = () => {
       // Both played → showdown
       GAME('Bot PLAYS → showdown');
       store.setPlayState('showdown');
-      store.setStatus('Determining winner (FHE)… 0s', '#B366FF');
+      store.setStatus('FHE network decrypting showdown result…', '#B366FF');
 
-      const showdownReady = await pollUntilTrue('showdown', () =>
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        publicClient!.readContract({
-          address: CONTRACT_ADDRESS, abi: CIPHER_POKER_ABI,
-          functionName: 'isShowdownReady', args: [tableId],
-          account: address,
-        } as any) as Promise<boolean>,
-        POLL_MS, MAX_POLLS,
-        (sec) => store.setStatus(`Determining winner (FHE)… ${sec}s`, '#B366FF'),
-      );
+      // Step 1 — read showdown handle
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const showdownHandle = await publicClient!.readContract({
+        address: CONTRACT_ADDRESS, abi: CIPHER_POKER_ABI,
+        functionName: 'getShowdownDecryptHandle', args: [tableId],
+        account: address,
+      } as any) as bigint;
+      GAME(`Showdown handle: ${showdownHandle.toString().slice(0, 12)}…`);
 
-      if (!showdownReady) {
-        GAME('Showdown TIMED OUT');
-        store.setStatus('Showdown timed out. Refresh and retry.', '#FF3B3B');
-        return;
-      }
+      // Step 2 — decrypt
+      const { result: sdResult, signature: sdSig } = await decryptForTx(showdownHandle);
+      GAME(`Showdown decryptForTx → result=${sdResult}`);
 
+      // Step 3 — submit
       store.setStatus('Revealing winner…', '#B366FF');
       const resolveShowdownHash = await writeAndWait('resolveShowdown', {
         address: CONTRACT_ADDRESS, abi: CIPHER_POKER_ABI,
-        functionName: 'resolveShowdown', args: [tableId],
+        functionName: 'resolveShowdown', args: [tableId, sdResult, sdSig],
       });
 
       await _finishHand(tableId, 'showdown', resolveShowdownHash);
 
     } catch (err) {
       console.error('[play]', err);
-      GAME('play FAILED:', err instanceof Error ? err.message : err);
-      store.setStatus('Transaction failed. Try again.', '#FF3B3B');
+      const errMsg = err instanceof Error ? err.message : String(err);
+      GAME('play FAILED:', errMsg);
+      if (isPermitError(errMsg) || useGameStore.getState().permitStatus === 'expired') {
+        store.setStatus('Permit expired — re-sign your FHE permit, then retry.', '#FF8C42');
+      } else {
+        store.setStatus('Transaction failed. Try again.', '#FF3B3B');
+      }
     }
-  }, [isOnChain, store, writeAndWait, publicClient, _finishHand, address]);
+  }, [isOnChain, store, writeAndWait, publicClient, _finishHand, address, isPermitError, decryptForTx]);
 
   const fold = useCallback(async () => {
     if (!isOnChain) return;

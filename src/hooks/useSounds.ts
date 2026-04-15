@@ -12,6 +12,7 @@ const getCtx = (): AudioContext | null => {
 };
 
 const playTone = (freq: number, duration: number, type: OscillatorType = 'sine', vol = 0.08) => {
+  try { if (localStorage.getItem('poker_soundOn') === 'false') return; } catch {}
   const ctx = getCtx();
   if (!ctx) return;
   const osc = ctx.createOscillator();

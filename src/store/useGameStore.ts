@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { sleep } from '@/lib/utils';
 import { HandEvaluation, PayoutResult } from '@/lib/poker';
 
 export type AppState    = 'landing' | 'connecting' | 'app';
@@ -18,6 +17,8 @@ export interface HandHistory {
   playerCards: number[];
   botCards:    number[];
   payout?:     PayoutResult;
+  playerEval?: HandEvaluation;
+  botEval?:    HandEvaluation;
 }
 
 interface FinishHandPayload {
@@ -38,16 +39,17 @@ interface GameStore {
   setAppState: (state: AppState) => void;
   setActiveTab:(tab: Tab) => void;
 
-  address:       string | null;
-  setAddress:    (addr: string | null) => void;
-  connectWallet: () => Promise<void>;
+  address:    string | null;
+  setAddress: (addr: string | null) => void;
 
-  permitStatus:    PermitState;
-  permitError:     string | null;
-  permitExpiresAt: number | null;
-  setPermitStatus: (s: PermitState) => void;
-  setPermitError:  (e: string | null) => void;
-  setPermitExpiry: (t: number | null) => void;
+  permitStatus:           PermitState;
+  permitError:            string | null;
+  permitExpiresAt:        number | null;
+  hasSeenPermitExplainer: boolean;
+  setPermitStatus:           (s: PermitState) => void;
+  setPermitError:            (e: string | null) => void;
+  setPermitExpiry:           (t: number | null) => void;
+  setHasSeenPermitExplainer: (v: boolean) => void;
 
   tableId:    number | null;
   setTableId: (id: number | null) => void;
@@ -96,18 +98,14 @@ export const useGameStore = create<GameStore>()(persist((set, get) => ({
   address:    null,
   setAddress: (addr) => set({ address: addr }),
 
-  permitStatus:    'none',
-  permitError:     null,
-  permitExpiresAt: null,
-  setPermitStatus: (s) => set({ permitStatus: s, permitError: s === 'error' ? get().permitError : null }),
-  setPermitError:  (e) => set({ permitError: e, permitStatus: e ? 'error' : get().permitStatus }),
-  setPermitExpiry: (t) => set({ permitExpiresAt: t }),
-
-  connectWallet: async () => {
-    set({ appState: 'connecting' });
-    await sleep(1500);
-    set({ address: '0x3f8a...9b2c', appState: 'app', activeTab: 'play' });
-  },
+  permitStatus:           'none',
+  permitError:            null,
+  permitExpiresAt:        null,
+  hasSeenPermitExplainer: false,
+  setPermitStatus:           (s) => set({ permitStatus: s, permitError: s === 'error' ? get().permitError : null }),
+  setPermitError:            (e) => set({ permitError: e, permitStatus: e ? 'error' : get().permitStatus }),
+  setPermitExpiry:           (t) => set({ permitExpiresAt: t }),
+  setHasSeenPermitExplainer: (v) => set({ hasSeenPermitExplainer: v }),
 
   tableId:    null,
   setTableId: (id) => set({ tableId: id }),
@@ -150,7 +148,7 @@ export const useGameStore = create<GameStore>()(persist((set, get) => ({
   setBotEval:    (e) => set({ botEval: e }),
 
   finishHand: ({ result, delta, desc, pot, balance, txHash, playerCards, botCards, payout }) => {
-    const { history, playerCards: pc, botCards: bc } = get();
+    const { history, playerCards: pc, botCards: bc, playerEval: pe, botEval: be } = get();
     const id = Math.floor(Math.random() * 100000).toString();
 
     let statusText: string;
@@ -192,6 +190,8 @@ export const useGameStore = create<GameStore>()(persist((set, get) => ({
         playerCards: playerCards ?? pc,
         botCards:    botCards    ?? bc,
         payout,
+        playerEval:  pe ?? undefined,
+        botEval:     be ?? undefined,
       }, ...history],
     });
   },
@@ -213,8 +213,9 @@ export const useGameStore = create<GameStore>()(persist((set, get) => ({
 }), {
   name: 'cofhe-poker-game',
   partialize: (state) => ({
-    tableId:   state.tableId,
-    gameMode:  state.gameMode,
-    activeTab: state.activeTab,
+    tableId:                state.tableId,
+    gameMode:               state.gameMode,
+    activeTab:              state.activeTab,
+    hasSeenPermitExplainer: state.hasSeenPermitExplainer,
   }),
 }));

@@ -4,74 +4,88 @@ import { useState, useCallback } from 'react';
 import { useCofhe } from '@/hooks/useCofhe';
 
 const STATE_CONFIG: Record<PermitState, {
-  label: string;
-  shortLabel: string;
-  color: string;
-  bg: string;
-  border: string;
-  glow: string;
-  pulse: boolean;
-  icon: string;
+  label:      string;   // full label shown in banner / tooltip
+  shortLabel: string;   // compact badge text
+  actionLabel: string;  // CTA verb shown when clickable
+  tooltip:    string;   // hover explanation
+  color:      string;
+  bg:         string;
+  border:     string;
+  glow:       string;
+  pulse:      boolean;
+  icon:       string;
 }> = {
   none: {
-    label:      'No Permit',
-    shortLabel: 'NO PERMIT',
-    color:      'var(--color-danger)',
-    bg:         'rgba(255,59,59,0.1)',
-    border:     'rgba(255,59,59,0.3)',
-    glow:       'rgba(255,59,59,0.4)',
-    pulse:      true,
-    icon:       '!',
+    label:       'FHE permit required',
+    shortLabel:  'SIGN PERMIT',
+    actionLabel: 'SIGN PERMIT',
+    tooltip:     'An FHE permit lets you privately decrypt your cards. Click to sign with your wallet — no gas, no cost.',
+    color:       'var(--color-fhe)',
+    bg:          'rgba(179,102,255,0.1)',
+    border:      'rgba(179,102,255,0.3)',
+    glow:        'rgba(179,102,255,0.4)',
+    pulse:       true,
+    icon:        '🔑',
   },
   signing: {
-    label:      'Signing Permit...',
-    shortLabel: 'SIGNING...',
-    color:      'var(--color-fhe)',
-    bg:         'rgba(179,102,255,0.1)',
-    border:     'rgba(179,102,255,0.3)',
-    glow:       'rgba(179,102,255,0.4)',
-    pulse:      true,
-    icon:       '*',
+    label:       'Signing permit…',
+    shortLabel:  'SIGNING…',
+    actionLabel: 'SIGNING…',
+    tooltip:     'Check your wallet — a signature request is waiting.',
+    color:       'var(--color-fhe)',
+    bg:          'rgba(179,102,255,0.1)',
+    border:      'rgba(179,102,255,0.3)',
+    glow:        'rgba(179,102,255,0.4)',
+    pulse:       true,
+    icon:        '⏳',
   },
   active: {
-    label:      'Permit Active',
-    shortLabel: 'PERMIT',
-    color:      'var(--color-success)',
-    bg:         'rgba(0,232,108,0.06)',
-    border:     'rgba(0,232,108,0.18)',
-    glow:       'rgba(0,232,108,0.4)',
-    pulse:      false,
-    icon:       'OK',
+    label:       'Permit active',
+    shortLabel:  'PERMIT OK',
+    actionLabel: 'PERMIT OK',
+    tooltip:     'Your FHE permit is active. Cards will decrypt privately.',
+    color:       'var(--color-success)',
+    bg:          'rgba(0,232,108,0.06)',
+    border:      'rgba(0,232,108,0.18)',
+    glow:        'rgba(0,232,108,0.4)',
+    pulse:       false,
+    icon:        '✓',
   },
   expiring: {
-    label:      'Permit Expiring',
-    shortLabel: 'EXPIRING',
-    color:      'var(--color-deco-orange)',
-    bg:         'rgba(255,140,66,0.1)',
-    border:     'rgba(255,140,66,0.25)',
-    glow:       'rgba(255,140,66,0.4)',
-    pulse:      true,
-    icon:       '!',
+    label:       'Permit expiring soon',
+    shortLabel:  'EXPIRING',
+    actionLabel: 'RE-SIGN',
+    tooltip:     'Your permit is about to expire. Re-sign to keep decrypting cards without interruption.',
+    color:       'var(--color-deco-orange)',
+    bg:          'rgba(255,140,66,0.1)',
+    border:      'rgba(255,140,66,0.25)',
+    glow:        'rgba(255,140,66,0.4)',
+    pulse:       true,
+    icon:        '⏳',
   },
   expired: {
-    label:      'Permit Expired',
-    shortLabel: 'EXPIRED',
-    color:      'var(--color-danger)',
-    bg:         'rgba(255,59,59,0.1)',
-    border:     'rgba(255,59,59,0.3)',
-    glow:       'rgba(255,59,59,0.4)',
-    pulse:      true,
-    icon:       '!',
+    label:       'Permit expired',
+    shortLabel:  'PERMIT EXPIRED',
+    actionLabel: 'SIGN PERMIT',
+    tooltip:     'Your FHE permit has expired. Sign a new one to decrypt your cards.',
+    color:       'var(--color-danger)',
+    bg:          'rgba(255,59,59,0.1)',
+    border:      'rgba(255,59,59,0.3)',
+    glow:        'rgba(255,59,59,0.4)',
+    pulse:       true,
+    icon:        '!',
   },
   error: {
-    label:      'Permit Error',
-    shortLabel: 'ERROR',
-    color:      'var(--color-danger)',
-    bg:         'rgba(255,59,59,0.1)',
-    border:     'rgba(255,59,59,0.3)',
-    glow:       'rgba(255,59,59,0.4)',
-    pulse:      true,
-    icon:       'X',
+    label:       'Signature rejected',
+    shortLabel:  'SIGN REJECTED',
+    actionLabel: 'TRY AGAIN',
+    tooltip:     'You rejected the wallet signature. The permit is needed to decrypt cards — tap to try again.',
+    color:       'var(--color-danger)',
+    bg:          'rgba(255,59,59,0.1)',
+    border:      'rgba(255,59,59,0.3)',
+    glow:        'rgba(255,59,59,0.4)',
+    pulse:       true,
+    icon:        '✕',
   },
 };
 
@@ -115,7 +129,8 @@ export const PermitBadge = ({ className }: { className?: string }) => {
         color:      cfg.color,
         animation:  canSign ? 'neon-pulse 2s ease-in-out infinite' : 'none',
       }}
-      title={canSign ? 'Click to sign FHE permit' : cfg.label}
+      title={cfg.tooltip}
+      aria-label={cfg.tooltip}
     >
       <motion.div
         className="w-1.5 h-1.5 rounded-full shrink-0"
@@ -127,7 +142,7 @@ export const PermitBadge = ({ className }: { className?: string }) => {
         transition={cfg.pulse ? { duration: 1.5, repeat: Infinity } : {}}
       />
       <span className="hidden sm:inline">
-        {canSign && permitStatus !== 'signing' ? 'SIGN PERMIT' : cfg.shortLabel}
+        {canSign && permitStatus !== 'signing' ? cfg.actionLabel : cfg.shortLabel}
       </span>
       <span className="sm:hidden">{cfg.icon}</span>
     </button>
@@ -187,14 +202,12 @@ export const PermitWarningBanner = () => {
             </motion.span>
             <div className="flex-1 min-w-0">
               <div className="font-satoshi text-sm font-bold" style={{ color: 'var(--color-fhe)' }}>
-                {permitStatus === 'none' && 'FHE Permit Required'}
-                {permitStatus === 'expired' && 'Permit Expired'}
-                {permitStatus === 'error' && 'Permit Error'}
+                {STATE_CONFIG[permitStatus].label}
               </div>
               <div className="font-satoshi text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
                 {permitStatus === 'error' && permitError
                   ? permitError
-                  : 'You need to sign a cryptographic permit to decrypt your cards. Click the button to open your wallet and sign.'}
+                  : STATE_CONFIG[permitStatus].tooltip}
               </div>
             </div>
             <button
@@ -207,7 +220,7 @@ export const PermitWarningBanner = () => {
                 boxShadow: '0 0 20px rgba(179,102,255,0.4)',
               }}
             >
-              {signing || (permitStatus as string) === 'signing' ? 'SIGNING...' : 'SIGN PERMIT'}
+              {signing || (permitStatus as string) === 'signing' ? 'SIGNING…' : STATE_CONFIG[permitStatus].actionLabel}
             </button>
           </div>
         </motion.div>
