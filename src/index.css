@@ -1,9 +1,9 @@
 @import "tailwindcss";
 
 @theme {
-  --font-clash: "Clash Display", "Space Grotesk", sans-serif;
-  --font-satoshi: "Satoshi", "Inter", sans-serif;
-  --font-mono: "JetBrains Mono", monospace;
+  --font-clash: "Chakra Petch", sans-serif;
+  --font-satoshi: "Chakra Petch", sans-serif;
+  --font-mono: "Chakra Petch", sans-serif;
 
   --color-black: #000000;
   --color-surface: #0C0C1A;
@@ -32,18 +32,32 @@
 }
 
 @layer base {
+  *, *::before, *::after {
+    font-family: 'Chakra Petch', sans-serif;
+  }
+
   body {
     background: linear-gradient(160deg, #09091E 0%, #050512 60%, #08080F 100%);
     background-attachment: fixed;
     color: var(--color-text-primary);
-    font-family: var(--font-satoshi);
+    font-family: 'Chakra Petch', sans-serif;
     overflow-x: hidden;
   }
 
-  /* Hide scrollbar for cleaner look */
+  /* Thin styled scrollbar */
   ::-webkit-scrollbar {
-    width: 0px;
+    width: 4px;
+    height: 4px;
+  }
+  ::-webkit-scrollbar-track {
     background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 2px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.16);
   }
 
   /* Custom selection */
@@ -67,6 +81,11 @@
     backdrop-filter: blur(30px);
     border: 1px solid rgba(255, 255, 255, 0.18);
   }
+}
+
+/* ── Settings: remove border-bottom from last data row in each card ───────── */
+.last-row-no-border > *:last-child {
+  border-bottom: none !important;
 }
 
 /* ── Keyframe Animations ─────────────────────────────────────────────────── */
@@ -223,4 +242,86 @@
 @keyframes preloader-sparkle {
   0%, 100% { opacity: 0; transform: scale(0.5) rotate(0deg); }
   50%      { opacity: 0.7; transform: scale(1) rotate(90deg); }
+}
+
+/* ── Card shine (holographic glint on winner) ─────────────────────── */
+@keyframes card-shine {
+  0%   { transform: translateX(-150%) skewX(-20deg); }
+  40%  { transform: translateX(-150%) skewX(-20deg); }
+  60%  { transform: translateX(250%) skewX(-20deg); }
+  100% { transform: translateX(250%) skewX(-20deg); }
+}
+
+/* ── Winner card pulse glow ──────────────────────────────────────── */
+@keyframes winner-pulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(255,224,61,0.5), 0 0 50px rgba(255,224,61,0.18); }
+  50%       { box-shadow: 0 0 35px rgba(255,224,61,0.8), 0 0 80px rgba(255,224,61,0.35), 0 0 120px rgba(255,224,61,0.12); }
+}
+
+/* ── Confetti fall particles ─────────────────────────────────────── */
+@keyframes confetti-fall-1 {
+  0%   { transform: translateY(-20px) rotate(0deg)   translateX(0);   opacity: 1; }
+  100% { transform: translateY(120vh) rotate(720deg) translateX(60px); opacity: 0; }
+}
+@keyframes confetti-fall-2 {
+  0%   { transform: translateY(-20px) rotate(0deg)    translateX(0);    opacity: 1; }
+  100% { transform: translateY(120vh) rotate(-540deg) translateX(-80px); opacity: 0; }
+}
+@keyframes confetti-fall-3 {
+  0%   { transform: translateY(-20px) rotate(45deg)   translateX(0);   opacity: 1; }
+  100% { transform: translateY(120vh) rotate(360deg)  translateX(40px); opacity: 0; }
+}
+@keyframes confetti-sway {
+  0%, 100% { margin-left: 0; }
+  50%       { margin-left: 30px; }
+}
+
+/* ── Chip fly up animation ───────────────────────────────────────── */
+@keyframes chip-fly {
+  0%   { transform: translateY(0)     scale(1)    opacity: 1; }
+  60%  { transform: translateY(-40px) scale(1.15) opacity: 1; }
+  100% { transform: translateY(-80px) scale(0.7)  opacity: 0; }
+}
+
+/* ── Chip bounce (stack pulse) ───────────────────────────────────── */
+@keyframes chip-bounce {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  30%       { transform: translateY(-6px) rotate(-5deg); }
+  60%       { transform: translateY(-3px) rotate(3deg); }
+}
+
+/* ── Scroll progress bar ─────────────────────────────────────────── */
+@keyframes progress-fill {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
+/* ── Result pop ──────────────────────────────────────────────────── */
+@keyframes result-pop {
+  0%   { transform: scale(0.6); opacity: 0; }
+  60%  { transform: scale(1.08); opacity: 1; }
+  100% { transform: scale(1); }
+}
+
+/* ── Win burst (radial scale) ────────────────────────────────────── */
+@keyframes win-burst {
+  0%   { transform: scale(0); opacity: 0.8; }
+  60%  { transform: scale(2.2); opacity: 0.3; }
+  100% { transform: scale(3); opacity: 0; }
+}
+
+/* ── Felt table texture pattern animation ────────────────────────── */
+@keyframes felt-breathe {
+  0%, 100% { opacity: 0.6; }
+  50%       { opacity: 0.85; }
+}
+
+/* ── Page slide transition ───────────────────────────────────────── */
+@keyframes slide-in-from-right {
+  from { transform: translateX(60px); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+@keyframes slide-out-to-left {
+  from { transform: translateX(0);     opacity: 1; }
+  to   { transform: translateX(-60px); opacity: 0; }
 }

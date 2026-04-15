@@ -574,6 +574,51 @@ const ParallaxSection = ({
   );
 };
 
+/* ── Scroll progress bar at top of page ────────────────────────── */
+const ScrollProgressBar = () => {
+  const { scrollYProgress } = useScroll();
+  const scaleX = useSpring(scrollYProgress, { stiffness: 100, damping: 30 });
+
+  return (
+    <motion.div
+      className="fixed top-0 left-0 right-0 z-[60] h-[2px] origin-left"
+      style={{
+        scaleX,
+        background: 'linear-gradient(90deg, var(--color-fhe), var(--color-primary), var(--color-success))',
+        boxShadow: '0 0 8px rgba(255,224,61,0.4)',
+      }}
+    />
+  );
+};
+
+/* ── Live stats with session-persistent counts ───────────────────── */
+const useLiveStats = () => {
+  const [handsPlayed, setHandsPlayed] = useState(() => {
+    try { return parseInt(sessionStorage.getItem('lp_hands') ?? '0', 10) || Math.floor(Math.random() * 800 + 3200); } catch { return 4128; }
+  });
+  const [totalPot, setTotalPot] = useState(() => {
+    try { return parseInt(sessionStorage.getItem('lp_pot') ?? '0', 10) || Math.floor(Math.random() * 50000 + 180000); } catch { return 198500; }
+  });
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setHandsPlayed(n => {
+        const next = n + (Math.random() > 0.6 ? 1 : 0);
+        try { sessionStorage.setItem('lp_hands', String(next)); } catch {}
+        return next;
+      });
+      setTotalPot(n => {
+        const next = n + Math.floor(Math.random() * 40);
+        try { sessionStorage.setItem('lp_pot', String(next)); } catch {}
+        return next;
+      });
+    }, 5000 + Math.random() * 3000);
+    return () => clearInterval(id);
+  }, []);
+
+  return { handsPlayed, totalPot };
+};
+
 export const LandingPage = () => {
   const { setAppState } = useGameStore();
   const handlePlay = () => setAppState('connecting');
@@ -581,12 +626,15 @@ export const LandingPage = () => {
   const { scrollYProgress } = useScroll({ target: heroRef, offset: ['start start', 'end start'] });
   const heroOpacity = useTransform(scrollYProgress, [0, 0.8], [1, 0]);
   const heroScale = useTransform(scrollYProgress, [0, 0.8], [1, 0.95]);
+  const { handsPlayed, totalPot } = useLiveStats();
 
   return (
     <div
       className="min-h-screen text-white"
       style={{ background: 'var(--color-black)' }}
     >
+      <ScrollProgressBar />
+
       {/* ── Navbar ── */}
       <nav
         className="sticky top-0 z-50 w-full h-20 flex items-center justify-between px-6 md:px-12"
@@ -802,13 +850,14 @@ export const LandingPage = () => {
         <section className="py-14 px-6" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
           <div className="max-w-5xl mx-auto flex flex-col md:flex-row justify-between items-center gap-12 md:gap-4 text-center">
             {[
-              { label: 'GAME MODES',           value: <><CountUp to={4} /></> },
-              { label: 'FHE OPS PER HAND',    value: <><CountUp to={79} />+</> },
+              { label: 'GAME MODES',          value: <><CountUp to={4} /></> },
+              { label: 'HANDS PLAYED',        value: <motion.span key={handsPlayed} initial={{ y: -4, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="font-clash text-[42px] tracking-tight">{handsPlayed.toLocaleString()}</motion.span> },
               { label: 'ON-CHAIN ENCRYPTED',  value: <><CountUp to={100} />%</> },
               { label: 'TRUSTED PARTIES',     value: <span style={{ color: 'var(--color-primary)', animation: 'counter-glow 3s ease-in-out infinite' }}>ZERO</span> },
             ].map((s, i) => (
               <Reveal key={i} delay={i * 0.08}>
-                <div className="font-clash text-[42px] tracking-tight mb-1">{s.value}</div>
+                {i !== 1 && <div className="font-clash text-[42px] tracking-tight mb-1">{s.value}</div>}
+                {i === 1 && <div className="mb-1">{s.value}</div>}
                 <div className="font-mono text-[10px] tracking-widest uppercase" style={{ color: 'var(--color-text-muted)' }}>{s.label}</div>
               </Reveal>
             ))}

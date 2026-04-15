@@ -1,19 +1,63 @@
-import { motion }                    from 'framer-motion';
+import { motion, AnimatePresence }   from 'framer-motion';
 import { useAccount, useDisconnect } from 'wagmi';
 import { useGameStore }              from '@/store/useGameStore';
-import { useEffect, useState }      from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { PermitBadge, PermitDot }   from '@/components/ui/PermitIndicator';
 import { useVaultStore, formatEth, formatUsdt, ethWeiToUsd, usdtToUsd, formatUsd } from '@/store/useVaultStore';
 import { ETH_TOKEN, VAULT_DEPLOYED } from '@/config/vault';
+import { Swords, History, HelpCircle, Settings } from 'lucide-react';
 
 const truncateAddr = (addr: string) =>
   `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 
+/* ── Track unread hand history entries ─────────────────────────── */
+const useUnreadHistory = (activeTab: string, history: { id: string }[]) => {
+  const seenCountRef = useRef(history.length);
+  const [unread, setUnread] = useState(0);
+
+  useEffect(() => {
+    if (activeTab === 'history') {
+      seenCountRef.current = history.length;
+      setUnread(0);
+    } else {
+      const newCount = history.length - seenCountRef.current;
+      setUnread(Math.max(0, newCount));
+    }
+  }, [history.length, activeTab]);
+
+  return unread;
+};
+
+/* ── Notification dot badge ─────────────────────────────────────── */
+const NotifDot = ({ count }: { count: number }) => (
+  <AnimatePresence>
+    {count > 0 && (
+      <motion.div
+        initial={{ scale: 0, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0, opacity: 0 }}
+        transition={{ type: 'spring', stiffness: 500, damping: 25 }}
+        className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] rounded-full flex items-center justify-center font-mono font-bold"
+        style={{
+          background: 'var(--color-danger)',
+          fontSize:   9,
+          color:      '#fff',
+          boxShadow:  '0 0 6px rgba(255,59,59,0.6)',
+          padding:    '0 3px',
+          zIndex:     20,
+        }}
+      >
+        {count > 9 ? '9+' : count}
+      </motion.div>
+    )}
+  </AnimatePresence>
+);
+
 const TABS = [
-  { key: 'play',     label: 'PLAY',     icon: '♠' },
-  { key: 'history',  label: 'HISTORY',  icon: '◈' },
-  { key: 'help',     label: 'HELP',     icon: '?' },
-  { key: 'settings', label: 'SETTINGS', icon: '⚙' },
+  { key: 'play',     label: 'PLAY',     Icon: Swords,      showDot: false },
+  { key: 'history',  label: 'HISTORY',  Icon: History,     showDot: true  },
+  { key: 'help',     label: 'HELP',     Icon: HelpCircle,  showDot: false },
+  { key: 'settings', label: 'SETTINGS', Icon: Settings,    showDot: false },
 ] as const;
 
 const AnimatedChips = ({ value }: { value: number }) => {
@@ -47,6 +91,7 @@ const AnimatedChips = ({ value }: { value: number }) => {
 export const TopBar = () => {
   const { activeTab, setActiveTab, balance, setAppState, history, playState } = useGameStore();
   const { address: walletAddr, isConnected } = useAccount();
+  const unreadHistory = useUnreadHistory(activeTab, history);
   const { disconnect } = useDisconnect();
   const { ethFree, usdtFree, ethUsdPrice, selectedToken, walletPanelOpen, setWalletPanelOpen, realMoneyMode } = useVaultStore();
 
@@ -85,7 +130,10 @@ export const TopBar = () => {
               filter: 'drop-shadow(0 0 6px rgba(57,255,20,0.25))',
             }}
           />
-          <span className="font-mono text-sm font-bold tracking-widest uppercase hidden sm:block text-white group-hover:text-[#39FF14] transition-colors">
+          <span
+            className="hidden sm:block text-white group-hover:text-[#39FF14] transition-colors uppercase"
+            style={{ fontFamily: "'Chakra Petch', sans-serif", fontWeight: 700, fontSize: 13, letterSpacing: '0.16em' }}
+          >
             Cofhe Poker
           </span>
         </button>
@@ -102,16 +150,21 @@ export const TopBar = () => {
             const isActive = activeTab === tab.key;
             const gameActive = !['lobby', 'result'].includes(playState) && activeTab === 'play';
             const blocked = gameActive && tab.key !== 'play';
+            const dotCount = tab.showDot && tab.key === 'history' ? unreadHistory : 0;
             return (
               <button
                 key={tab.key}
                 onClick={() => {
-                  if (blocked) return; // can't switch tabs during active game
+                  if (blocked) return;
                   setActiveTab(tab.key);
                 }}
                 title={blocked ? 'Finish or fold your hand first' : undefined}
-                className="relative z-10 h-9 px-6 rounded-full font-mono text-xs font-bold tracking-widest uppercase transition-colors flex items-center gap-2"
+                className="relative z-10 h-9 px-6 rounded-full uppercase transition-colors flex items-center gap-2"
                 style={{
+                  fontFamily: "'Chakra Petch', sans-serif",
+                  fontWeight: 600,
+                  fontSize: 13,
+                  letterSpacing: '0.12em',
                   color: isActive ? '#000' : 'rgba(255,255,255,0.7)',
                   opacity: blocked ? 0.3 : 1,
                   cursor: blocked ? 'not-allowed' : 'pointer',
@@ -125,8 +178,14 @@ export const TopBar = () => {
                     transition={{ type: 'spring', stiffness: 450, damping: 32 }}
                   />
                 )}
-                <span className="text-[13px]">{tab.icon}</span>
+                <div className="relative">
+                  <tab.Icon size={13} strokeWidth={1.8} />
+                  <NotifDot count={dotCount} />
+                </div>
                 {tab.label}
+                {blocked && (
+                  <span className="text-[9px] opacity-40">🔒</span>
+                )}
               </button>
             );
           })}
@@ -203,10 +262,17 @@ export const TopBar = () => {
 
           {/* Wallet */}
           <button
-            onClick={() => isConnected ? disconnect() : setAppState('connecting')}
-            className="flex items-center gap-2 h-9 px-4 rounded-full font-mono text-xs tracking-wider transition-all"
+            onClick={() => {
+              if (isConnected) { disconnect(); setAppState('landing'); }
+              else setAppState('connecting');
+            }}
+            className="flex items-center gap-2 h-9 px-4 rounded-full transition-all"
             title={isConnected ? 'Click to disconnect' : 'Click to connect wallet'}
             style={{
+              fontFamily: "'Chakra Petch', sans-serif",
+              fontWeight: 500,
+              fontSize: 13,
+              letterSpacing: '0.04em',
               background: isConnected ? 'rgba(255,255,255,0.05)' : 'rgba(255,224,61,0.06)',
               border:     isConnected ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(255,224,61,0.2)',
               color:      isConnected ? 'rgba(255,255,255,0.7)' : 'var(--color-primary)',
@@ -230,7 +296,8 @@ export const TopBar = () => {
 };
 
 export const BottomTabBar = () => {
-  const { activeTab, setActiveTab, balance, playState } = useGameStore();
+  const { activeTab, setActiveTab, balance, playState, history } = useGameStore();
+  const unreadHistory = useUnreadHistory(activeTab, history);
 
   return (
     <div
@@ -267,19 +334,27 @@ export const BottomTabBar = () => {
           const isActive = activeTab === tab.key;
           const gameActive = !['lobby', 'result'].includes(playState) && activeTab === 'play';
           const blocked = gameActive && tab.key !== 'play';
+          const dotCount = tab.showDot && tab.key === 'history' ? unreadHistory : 0;
           return (
             <button
               key={tab.key}
               onClick={() => { if (!blocked) setActiveTab(tab.key); }}
-              className="relative flex-1 h-10 rounded-full font-mono text-[11px] font-bold tracking-widest uppercase flex items-center justify-center gap-1.5 transition-colors"
+              className="relative flex-1 h-10 rounded-full uppercase flex items-center justify-center gap-1.5 transition-colors"
               style={{
+                fontFamily: "'Chakra Petch', sans-serif",
+                fontWeight: 600,
+                fontSize: 11,
+                letterSpacing: '0.12em',
                 background: isActive ? 'var(--color-primary)' : 'transparent',
                 color:      isActive ? '#000' : 'rgba(255,255,255,0.6)',
                 opacity:    blocked ? 0.3 : 1,
                 cursor:     blocked ? 'not-allowed' : 'pointer',
               }}
             >
-              <span className="text-xs">{tab.icon}</span>
+              <div className="relative">
+                <tab.Icon size={12} strokeWidth={1.8} />
+                <NotifDot count={dotCount} />
+              </div>
               {tab.label}
             </button>
           );

@@ -381,6 +381,48 @@ const PayoutLine = ({ label, value, delay }: { label: string; value: number; del
   );
 };
 
+/* ── CSS Confetti particles for win ────────────────────────────── */
+const CONFETTI_COLORS = ['#FFE03D', '#FF3B3B', '#4D7CFF', '#00E86C', '#B366FF', '#FF66B2', '#FF8C42', '#FFFFFF'];
+const CONFETTI_COUNT = 80;
+
+const ConfettiParticles = () => {
+  const particles = useRef(
+    Array.from({ length: CONFETTI_COUNT }, (_, i) => ({
+      id:    i,
+      color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+      left:  Math.random() * 100,
+      delay: Math.random() * 1.2,
+      dur:   2.2 + Math.random() * 1.8,
+      size:  5 + Math.random() * 8,
+      anim:  ['confetti-fall-1', 'confetti-fall-2', 'confetti-fall-3'][i % 3],
+      rot:   Math.random() * 360,
+      shape: i % 3 === 0 ? 'circle' : i % 3 === 1 ? 'rect' : 'diamond',
+    })),
+  );
+
+  return (
+    <div className="fixed inset-0 pointer-events-none overflow-hidden z-[60]" aria-hidden>
+      {particles.current.map(p => (
+        <div
+          key={p.id}
+          style={{
+            position:  'absolute',
+            top:       '-12px',
+            left:      `${p.left}%`,
+            width:     p.size,
+            height:    p.shape === 'rect' ? p.size * 0.5 : p.size,
+            background: p.color,
+            borderRadius: p.shape === 'circle' ? '50%' : p.shape === 'diamond' ? '2px' : '1px',
+            transform: p.shape === 'diamond' ? `rotate(45deg)` : `rotate(${p.rot}deg)`,
+            animation: `${p.anim} ${p.dur}s ease-in ${p.delay}s both`,
+            boxShadow: `0 0 4px ${p.color}80`,
+          }}
+        />
+      ))}
+    </div>
+  );
+};
+
 const ResultOverlay = () => {
   const { playState, handResult, balance, playerEval, botEval, resetToLobby, playerCards, botCards, lastPayout } = useGameStore();
   const { startHand } = useGameActions();
@@ -393,6 +435,10 @@ const ResultOverlay = () => {
   const p = lastPayout;
 
   return (
+    <>
+      {/* Confetti burst on win */}
+      {isWin && <ConfettiParticles />}
+
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -542,6 +588,7 @@ const ResultOverlay = () => {
         </div>
       </motion.div>
     </motion.div>
+    </>
   );
 };
 
@@ -622,14 +669,26 @@ const PreFlightBanner = ({ result }: { result: PreFlightResult | null }) => {
 };
 
 const TablePattern = () => (
-  <svg className="absolute inset-0 w-full h-full rounded-3xl" style={{ opacity: 0.04 }} preserveAspectRatio="none">
-    <defs>
-      <pattern id="felt-diamonds" width="40" height="40" patternUnits="userSpaceOnUse">
-        <path d="M20 0 L40 20 L20 40 L0 20Z" stroke="rgba(255,255,255,0.8)" strokeWidth="0.5" fill="none" />
-      </pattern>
-    </defs>
-    <rect width="100%" height="100%" fill="url(#felt-diamonds)" />
-  </svg>
+  <>
+    {/* Diamonds */}
+    <svg className="absolute inset-0 w-full h-full rounded-3xl" style={{ opacity: 0.05, animation: 'felt-breathe 4s ease-in-out infinite' }} preserveAspectRatio="none">
+      <defs>
+        <pattern id="felt-diamonds" width="40" height="40" patternUnits="userSpaceOnUse">
+          <path d="M20 0 L40 20 L20 40 L0 20Z" stroke="rgba(255,255,255,0.8)" strokeWidth="0.5" fill="none" />
+        </pattern>
+      </defs>
+      <rect width="100%" height="100%" fill="url(#felt-diamonds)" />
+    </svg>
+    {/* Subtle felt grain overlay */}
+    <svg className="absolute inset-0 w-full h-full rounded-3xl" style={{ opacity: 0.025 }} preserveAspectRatio="none">
+      <defs>
+        <pattern id="felt-grid" width="8" height="8" patternUnits="userSpaceOnUse">
+          <circle cx="4" cy="4" r="0.5" fill="rgba(255,255,255,0.9)" />
+        </pattern>
+      </defs>
+      <rect width="100%" height="100%" fill="url(#felt-grid)" />
+    </svg>
+  </>
 );
 
 const BeginnerHint = ({ playerCards }: { playerCards: number[] }) => {
@@ -874,7 +933,7 @@ const PairPlusSelector = ({ value, onChange, balance }: { value: number; onChang
 
 export const PlayTab = () => {
   const { playState, statusMsg, pot, balance, playerCards, botCards, history, pairPlusBet, setPairPlusBet } = useGameStore();
-  const { startHand, play, fold, retryDecrypt, isOnChain } = useGameActions();
+  const { startHand, play, fold, retryDecrypt, confirmNext, isOnChain } = useGameActions();
   const { showHints } = useKeyboardShortcuts({ play, fold });
   const { isConnected } = useAccount();
   const contractDeployed = CONTRACT_ADDRESS !== '0x0000000000000000000000000000000000000000';
@@ -898,7 +957,7 @@ export const PlayTab = () => {
   }, []);
 
   const isActive = playState !== 'lobby';
-  const isProcessing = playState === 'dealing' || playState === 'decrypting' || playState === 'botThinking' || playState === 'showdown' || playState === 'folding';
+  const isProcessing = playState === 'dealing' || playState === 'decrypting' || playState === 'botThinking' || playState === 'folding';
 
   // Pre-flight state
   const [preFlightResult, setPreFlightResult] = useState<PreFlightResult | null>(null);
@@ -1331,7 +1390,22 @@ export const PlayTab = () => {
       )}
 
       {/* ── Action buttons ── */}
-      {playState === 'decrypting' && statusMsg.color === '#FF8C42' ? (
+      {playState === 'confirmAction' ? (
+        /* Queued TX — user clicks to send next wallet signature */
+        <div className="flex gap-3 mt-4 relative z-10">
+          <MagneticBtn
+            onClick={confirmNext}
+            className="h-12 px-12 rounded-full font-mono text-sm font-bold tracking-widest uppercase flex items-center gap-2 transition-all relative overflow-hidden"
+            style={{
+              background: 'var(--color-primary)',
+              color:      '#000',
+              boxShadow:  '0 0 28px rgba(255,224,61,0.4)',
+            }}
+          >
+            CONFIRM
+          </MagneticBtn>
+        </div>
+      ) : playState === 'decrypting' && statusMsg.color === '#FF8C42' ? (
         /* FHE failure — show RETRY / FOLD instead of normal buttons */
         <div className="flex gap-3 mt-4 relative z-10">
           <MagneticBtn
