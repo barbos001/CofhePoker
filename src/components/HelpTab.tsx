@@ -7,7 +7,7 @@ const ETHERSCAN = 'https://sepolia.etherscan.io';
 const FAQ = ({ q, a }: { q: string; a: string }) => {
   const [open, setOpen] = useState(false);
   return (
-    <div style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+    <div style={{ borderBottom: '1px solid rgba(255,255,255,0.09)' }}>
       <button
         onClick={() => setOpen(!open)}
         className="w-full py-4 flex items-center justify-between text-left"
@@ -155,7 +155,7 @@ export const HelpTab = () => {
       <Section title="How to Play" delay={0.05} defaultOpen>
         <div
           className="rounded-2xl p-5 mb-4"
-          style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}
+          style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.10)' }}
         >
           {[
             { step: '01', text: 'Connect MetaMask on Sepolia testnet' },
@@ -171,7 +171,7 @@ export const HelpTab = () => {
             <div
               key={i}
               className="flex items-start gap-4 py-3"
-              style={{ borderBottom: i < 8 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}
+              style={{ borderBottom: i < 8 ? '1px solid rgba(255,255,255,0.09)' : 'none' }}
             >
               <span className="font-clash text-2xl shrink-0 w-8" style={{ color: 'var(--color-text-dark)' }}>{s.step}</span>
               <span className="font-satoshi text-sm leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>{s.text}</span>
@@ -185,7 +185,7 @@ export const HelpTab = () => {
         <p className="font-satoshi text-xs mb-4" style={{ color: 'var(--color-text-muted)' }}>
           In 3-card poker, Straight beats Flush (harder to hit with 3 cards). Mini Royal = A-K-Q suited.
         </p>
-        <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.05)' }}>
+        <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>
           <TRow cells={['Hand', 'Example', 'Description']} header />
           {[
             ['Mini Royal', 'A♠ K♠ Q♠', 'A-K-Q of one suit (best hand)'],
@@ -209,7 +209,7 @@ export const HelpTab = () => {
             <div className="font-mono text-[10px] tracking-widest uppercase mb-2" style={{ color: 'var(--color-primary)' }}>
               Ante & Play Payouts
             </div>
-            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.05)' }}>
+            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>
               <TRow cells={['Result', 'Ante', 'Play']} header />
               <TRow cells={['You win', '+1:1', '+1:1']} />
               <TRow cells={['Push (tie)', 'Returned', 'Returned']} />
@@ -224,7 +224,7 @@ export const HelpTab = () => {
             <div className="font-mono text-[10px] tracking-widest uppercase mb-2" style={{ color: 'var(--color-success)' }}>
               Ante Bonus (paid regardless of dealer hand)
             </div>
-            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.05)' }}>
+            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>
               <TRow cells={['Hand', 'Bonus']} header />
               <TRow cells={['Straight', '1:1 (1x Ante)']} />
               <TRow cells={['Three of a Kind', '4:1 (4x Ante)']} />
@@ -238,7 +238,7 @@ export const HelpTab = () => {
             <div className="font-mono text-[10px] tracking-widest uppercase mb-2" style={{ color: 'var(--color-fhe)' }}>
               Pair Plus (independent side bet — pays even on fold!)
             </div>
-            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.05)' }}>
+            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>
               <TRow cells={['Hand', 'Payout']} header />
               <TRow cells={['Pair', '1:1']} />
               <TRow cells={['Flush', '4:1']} />
@@ -301,7 +301,7 @@ Suits: ♠ Spades  ♥ Hearts  ♦ Diamonds  ♣ Clubs`}</Code>
 
       {/* ── Poker Types ── */}
       <Section title="2. Types of Poker" delay={0.14}>
-        <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.05)' }}>
+        <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>
           <TRow cells={['Type', 'Hole Cards', 'Community']} header />
           <TRow cells={["Texas Hold'em", '2', '5 (3+1+1)']} highlight />
           <TRow cells={['Omaha', '4 (use exactly 2)', '5']} />
@@ -368,7 +368,7 @@ UTG  = Under the Gun  — first to act pre-flop`}</Code>
 
       {/* ── Actions ── */}
       <Section title="5. Betting Actions" delay={0.2}>
-        <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.05)' }}>
+        <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>
           <TRow cells={['Action', 'When', 'Effect']} header />
           <TRow cells={['FOLD', 'Any time', 'Discard cards, lose all bets']} />
           <TRow cells={['CHECK', 'No bet yet', 'Pass without betting']} />
@@ -387,7 +387,7 @@ UTG  = Under the Gun  — first to act pre-flop`}</Code>
         <p className="font-satoshi text-xs mb-3" style={{ color: 'var(--color-text-muted)' }}>
           Standard poker hand rankings. In 5-card poker, Flush beats Straight (opposite of 3-card).
         </p>
-        <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.05)' }}>
+        <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>
           <TRow cells={['#', 'Hand', 'Example', 'Probability']} header />
           {[
             ['1', 'Royal Flush', 'A K Q J 10 suited', '0.00015%'],
@@ -447,7 +447,7 @@ High Card      = c1×10⁸ + c2×10⁶ + c3×10⁴ + c4×100 + c5`}</Code>
       <Section title="9. Showdown Rules" delay={0.28}>
         <div
           className="rounded-xl p-4 space-y-2"
-          style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}
+          style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.10)' }}
         >
           {[
             'Last aggressor (bet/raise) shows first',
@@ -592,7 +592,7 @@ NEXT HAND
       <Section title="FHE Operations Used" delay={0.4}>
         <div
           className="rounded-2xl overflow-hidden"
-          style={{ border: '1px solid rgba(255,255,255,0.05)' }}
+          style={{ border: '1px solid rgba(255,255,255,0.10)' }}
         >
           {[
             ['FHE.randomEuint64()', 'Encrypted seed for card dealing'],
@@ -623,7 +623,7 @@ NEXT HAND
       <Section title="FAQ" delay={0.42}>
         <div
           className="rounded-2xl px-5"
-          style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}
+          style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.10)' }}
         >
           <FAQ
             q="Is this real poker with real money?"
@@ -668,7 +668,7 @@ NEXT HAND
       <Section title="Verify & Links" delay={0.44}>
         <div
           className="rounded-2xl p-5"
-          style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}
+          style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.10)' }}
         >
           <p className="font-satoshi text-sm mb-4" style={{ color: 'var(--color-text-secondary)' }}>
             Every hand is a verifiable Ethereum transaction. All ciphertexts are public — but unreadable without a permit.

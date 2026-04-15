@@ -114,8 +114,8 @@ export const LobbyView = () => {
             <div
               className="text-center py-16 rounded-2xl"
               style={{
-                background: 'rgba(255,255,255,0.02)',
-                border:     '1px dashed rgba(255,255,255,0.08)',
+                background: 'rgba(255,255,255,0.04)',
+                border:     '1px dashed rgba(255,255,255,0.15)',
               }}
             >
               <div className="font-clash text-xl mb-2" style={{ color: 'rgba(255,255,255,0.3)' }}>
@@ -134,8 +134,8 @@ export const LobbyView = () => {
                 transition={{ delay: i * 0.04 }}
                 className="flex items-center gap-4 px-5 py-4 rounded-xl transition-all group"
                 style={{
-                  background: 'rgba(255,255,255,0.02)',
-                  border:     '1px solid rgba(255,255,255,0.06)',
+                  background: 'rgba(255,255,255,0.05)',
+                  border:     '1px solid rgba(255,255,255,0.12)',
                 }}
               >
                 {/* Table ID */}

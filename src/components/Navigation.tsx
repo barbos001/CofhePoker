@@ -63,9 +63,9 @@ export const TopBar = () => {
     <header
       className="sticky top-0 z-40 w-full"
       style={{
-        background:    'rgba(0,0,0,0.85)',
+        background:    'rgba(6,6,20,0.92)',
         backdropFilter: 'blur(20px)',
-        borderBottom:  '1px solid rgba(255,255,255,0.06)',
+        borderBottom:  '1px solid rgba(255,255,255,0.12)',
       }}
     >
       <div className="h-16 flex items-center justify-between px-4 md:px-8 max-w-[1400px] mx-auto w-full">
@@ -94,8 +94,8 @@ export const TopBar = () => {
         <div
           className="hidden md:flex items-center gap-1 p-1 rounded-full relative"
           style={{
-            background: 'rgba(255,255,255,0.04)',
-            border:     '1px solid rgba(255,255,255,0.06)',
+            background: 'rgba(255,255,255,0.07)',
+            border:     '1px solid rgba(255,255,255,0.12)',
           }}
         >
           {TABS.map(tab => {
@@ -236,9 +236,9 @@ export const BottomTabBar = () => {
     <div
       className="md:hidden fixed bottom-0 left-0 right-0 z-40 px-3 pb-2 pt-1.5"
       style={{
-        background:    'rgba(0,0,0,0.92)',
+        background:    'rgba(6,6,20,0.96)',
         backdropFilter: 'blur(20px)',
-        borderTop:     '1px solid rgba(255,255,255,0.06)',
+        borderTop:     '1px solid rgba(255,255,255,0.12)',
       }}
     >
       {/* Mobile balance + permit row */}
@@ -259,8 +259,8 @@ export const BottomTabBar = () => {
       <div
         className="flex items-center gap-1 p-1 rounded-full relative"
         style={{
-          background: 'rgba(255,255,255,0.04)',
-          border:     '1px solid rgba(255,255,255,0.06)',
+          background: 'rgba(255,255,255,0.07)',
+          border:     '1px solid rgba(255,255,255,0.12)',
         }}
       >
         {TABS.map(tab => {

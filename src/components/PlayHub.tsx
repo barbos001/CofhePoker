@@ -46,8 +46,8 @@ const ModeCard = ({
     onClick={onClick}
     className="flex-1 min-w-[240px] max-w-[340px] rounded-2xl p-6 text-left transition-all group relative overflow-hidden"
     style={{
-      background: 'rgba(255,255,255,0.03)',
-      border: `1.5px solid ${accent}25`,
+      background: 'rgba(255,255,255,0.06)',
+      border: `1.5px solid ${accent}40`,
     }}
   >
     <div

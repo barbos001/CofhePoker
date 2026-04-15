@@ -160,8 +160,8 @@ const Section = ({
       transition={{ delay, duration: 0.4 }}
       className="rounded-2xl mb-5 overflow-hidden relative scroll-mt-24"
       style={{
-        background: 'rgba(255,255,255,0.03)',
-        border: '1px solid rgba(255,255,255,0.07)',
+        background: 'rgba(255,255,255,0.055)',
+        border: '1px solid rgba(255,255,255,0.13)',
       }}
     >
       {/* Accent top line */}
@@ -211,7 +211,7 @@ const Section = ({
             className="overflow-hidden"
           >
             <div className="px-5 pb-5">
-              <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
+              <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
                 {children}
               </div>
             </div>
@@ -330,7 +330,7 @@ export const SettingsTab = () => {
   return (
     <div className="w-full min-h-[calc(100vh-112px)] flex justify-center">
       {/* ── Left Sidebar ── */}
-      <div className="hidden lg:block w-[190px] shrink-0 border-r" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+      <div className="hidden lg:block w-[190px] shrink-0 border-r" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
         <div className="sticky top-[80px] pt-10 pb-6 pr-4 pl-6 flex flex-col gap-0.5">
           <span className="font-mono text-[9px] tracking-widest uppercase mb-3" style={{ color: 'rgba(255,255,255,0.2)' }}>
             Sections
@@ -342,7 +342,7 @@ export const SettingsTab = () => {
               className="flex items-center gap-2.5 h-9 px-3 rounded-xl text-left transition-all w-full"
               style={{
                 background: activeSection === s.id ? 'rgba(255,255,255,0.06)' : 'transparent',
-                color: activeSection === s.id ? 'white' : 'rgba(255,255,255,0.4)',
+                color: activeSection === s.id ? 'white' : 'rgba(255,255,255,0.55)',
                 borderLeft: activeSection === s.id ? '2px solid var(--color-primary)' : '2px solid transparent',
               }}
             >
@@ -831,7 +831,7 @@ export const SettingsTab = () => {
             className="w-full h-12 rounded-full font-mono text-xs tracking-widest uppercase transition-all group relative overflow-hidden"
             style={{
               color: 'var(--color-danger)',
-              border: '1px solid rgba(255,59,59,0.25)',
+              border: '1px solid rgba(255,59,59,0.40)',
             }}
             onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,59,59,0.06)')}
             onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
@@ -844,7 +844,7 @@ export const SettingsTab = () => {
           className="w-full h-12 rounded-full font-mono text-xs tracking-widest uppercase transition-all"
           style={{
             color: 'var(--color-text-muted)',
-            border: '1px solid rgba(255,255,255,0.06)',
+            border: '1px solid rgba(255,255,255,0.12)',
           }}
           onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.03)')}
           onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}

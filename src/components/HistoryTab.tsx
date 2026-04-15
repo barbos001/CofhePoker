@@ -33,13 +33,13 @@ const HistoryRow = ({
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.04 }}
-      style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
+      style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}
     >
       {/* Summary row */}
       <div
         className="flex items-center py-4 cursor-pointer px-3 transition-all rounded-lg gap-3"
         onClick={() => setExpanded(!expanded)}
-        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
+        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.04)')}
         onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
         style={{ background: 'transparent' }}
       >
@@ -83,8 +83,8 @@ const HistoryRow = ({
             <div
               className="p-5 flex flex-col md:flex-row gap-6 items-center justify-center rounded-xl mx-2 mb-2"
               style={{
-                background: 'rgba(255,255,255,0.02)',
-                border:     '1px solid rgba(255,255,255,0.04)',
+                background: 'rgba(255,255,255,0.04)',
+                border:     '1px solid rgba(255,255,255,0.10)',
               }}
             >
               {!isFold ? (
