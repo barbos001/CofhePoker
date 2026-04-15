@@ -330,7 +330,7 @@ export const PlayHub = () => {
     const handler = (e: PopStateEvent) => {
       if (isInGame) {
         // During active game, re-push current state to prevent navigation
-        pushPlayState(mode, opponent);
+        pushPlayState(mode, opponent, moneyMode);
         return;
       }
 
