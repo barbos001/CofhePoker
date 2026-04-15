@@ -159,8 +159,8 @@ export const TopBar = () => {
             </div>
           )}
 
-          {/* Vault balance button (real-money mode) */}
-          {VAULT_DEPLOYED && isConnected && (
+          {/* Vault balance button */}
+          {isConnected && (
             <button
               onClick={() => setWalletPanelOpen(!walletPanelOpen)}
               className="hidden sm:flex items-center gap-2 h-9 px-4 rounded-full font-mono text-xs font-bold tracking-wider transition-all"
@@ -174,7 +174,7 @@ export const TopBar = () => {
               title="Open Vault — deposit / withdraw real funds"
             >
               <span className="text-[11px]">◈</span>
-              {formatUsd(vaultUsd)}
+              {VAULT_DEPLOYED ? formatUsd(vaultUsd) : 'Vault'}
             </button>
           )}
 

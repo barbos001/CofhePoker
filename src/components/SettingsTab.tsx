@@ -328,7 +328,7 @@ export const SettingsTab = () => {
   const copyContract = () => { navigator.clipboard.writeText(CONTRACT_ADDRESS); };
 
   return (
-    <div className="w-full min-h-[calc(100vh-112px)] flex">
+    <div className="w-full min-h-[calc(100vh-112px)] flex justify-center">
       {/* ── Left Sidebar ── */}
       <div className="hidden lg:block w-[190px] shrink-0 border-r" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
         <div className="sticky top-[80px] pt-10 pb-6 pr-4 pl-6 flex flex-col gap-0.5">
@@ -354,7 +354,7 @@ export const SettingsTab = () => {
       </div>
 
       {/* ── Main Content ── */}
-      <div className="flex-1 max-w-[700px] py-10 px-4 md:px-8">
+      <div className="w-full max-w-[700px] py-10 px-4 md:px-8">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -489,11 +489,11 @@ export const SettingsTab = () => {
         />
         <ActionRow
           label="Deposit / Withdraw"
-          desc={!isConnected ? 'Connect wallet first' : !VAULT_DEPLOYED ? 'Vault contract not deployed yet' : 'Move real funds in or out of the vault'}
+          desc={!isConnected ? 'Connect wallet first' : 'Move real funds in or out of the vault'}
           btnLabel="OPEN VAULT"
           btnColor="var(--color-success)"
           onClick={() => setWalletPanelOpen(true)}
-          disabled={!isConnected || !VAULT_DEPLOYED}
+          disabled={!isConnected}
         />
         {isConnected && (
           <div className="pt-3">
