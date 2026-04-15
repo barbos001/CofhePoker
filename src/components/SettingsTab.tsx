@@ -1,9 +1,11 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAccount, useDisconnect } from 'wagmi';
 import { useGameStore } from '@/store/useGameStore';
 import { CONTRACT_ADDRESS } from '@/config/contract';
 import { useCofhe } from '@/hooks/useCofhe';
+import { useVaultStore } from '@/store/useVaultStore';
+import { VAULT_DEPLOYED } from '@/config/vault';
 
 const ETHERSCAN = 'https://sepolia.etherscan.io';
 
@@ -128,6 +130,7 @@ const StatusBadge = ({ active, label }: { active: boolean; label: string }) => (
 );
 
 const Section = ({
+  id,
   title,
   icon,
   badge,
@@ -137,6 +140,7 @@ const Section = ({
   collapsible = false,
   defaultOpen = true,
 }: {
+  id?: string;
   title: string;
   icon: string;
   badge?: React.ReactNode;
@@ -150,10 +154,11 @@ const Section = ({
 
   return (
     <motion.div
+      id={id}
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay, duration: 0.4 }}
-      className="rounded-2xl mb-5 overflow-hidden relative"
+      className="rounded-2xl mb-5 overflow-hidden relative scroll-mt-24"
       style={{
         background: 'rgba(255,255,255,0.03)',
         border: '1px solid rgba(255,255,255,0.07)',
@@ -217,12 +222,33 @@ const Section = ({
   );
 };
 
+const SIDEBAR_SECTIONS = [
+  { id: 'permits',  icon: '🔑', label: 'FHE Permits' },
+  { id: 'wallet',   icon: '◈',  label: 'Wallet' },
+  { id: 'cards',    icon: '👁',  label: 'My Cards' },
+  { id: 'gas',      icon: '⛽',  label: 'Gas & Tx' },
+  { id: 'gameplay', icon: '♠',  label: 'Gameplay' },
+  { id: 'sound',    icon: '🔊', label: 'Sound' },
+  { id: 'security', icon: '🔐', label: 'Security' },
+  { id: 'stats',    icon: '◆',  label: 'Statistics' },
+  { id: 'contract', icon: '⛓',  label: 'Contract' },
+  { id: 'about',    icon: '♠',  label: 'About' },
+] as const;
+
 export const SettingsTab = () => {
   const { balance, history, setAppState, permitStatus, permitError, setPermitStatus, setPermitError } = useGameStore();
   const { address, isConnected, chainId } = useAccount();
   const { disconnect } = useDisconnect();
   const { ensurePermit, removeActivePermit, isReady: cofheReady } = useCofhe();
+  const { setWalletPanelOpen } = useVaultStore();
+  const [activeSection, setActiveSection] = useState<string>('permits');
   const deployed = CONTRACT_ADDRESS !== '0x0000000000000000000000000000000000000000';
+
+  const scrollToSection = (id: string) => {
+    setActiveSection(id);
+    const el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   // Permits
   const hasActivePermit = permitStatus === 'active';
@@ -302,7 +328,33 @@ export const SettingsTab = () => {
   const copyContract = () => { navigator.clipboard.writeText(CONTRACT_ADDRESS); };
 
   return (
-    <div className="w-full max-w-[700px] mx-auto py-10 px-4 min-h-[calc(100vh-112px)]">
+    <div className="w-full min-h-[calc(100vh-112px)] flex">
+      {/* ── Left Sidebar ── */}
+      <div className="hidden lg:block w-[190px] shrink-0 border-r" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+        <div className="sticky top-[80px] pt-10 pb-6 pr-4 pl-6 flex flex-col gap-0.5">
+          <span className="font-mono text-[9px] tracking-widest uppercase mb-3" style={{ color: 'rgba(255,255,255,0.2)' }}>
+            Sections
+          </span>
+          {SIDEBAR_SECTIONS.map(s => (
+            <button
+              key={s.id}
+              onClick={() => scrollToSection(s.id)}
+              className="flex items-center gap-2.5 h-9 px-3 rounded-xl text-left transition-all w-full"
+              style={{
+                background: activeSection === s.id ? 'rgba(255,255,255,0.06)' : 'transparent',
+                color: activeSection === s.id ? 'white' : 'rgba(255,255,255,0.4)',
+                borderLeft: activeSection === s.id ? '2px solid var(--color-primary)' : '2px solid transparent',
+              }}
+            >
+              <span className="text-xs w-4 text-center shrink-0">{s.icon}</span>
+              <span className="font-mono text-[11px] tracking-wider truncate">{s.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Main Content ── */}
+      <div className="flex-1 max-w-[700px] py-10 px-4 md:px-8">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -320,6 +372,7 @@ export const SettingsTab = () => {
           🔑  FHE PERMITS
           ═══════════════════════════════════════════════════════════════════ */}
       <Section
+        id="permits"
         title="FHE Permits"
         icon="🔑"
         accentColor={permitNeedsAction ? '#FF3B3B' : '#B366FF'}
@@ -397,6 +450,7 @@ export const SettingsTab = () => {
           🌐  WALLET & NETWORK
           ═══════════════════════════════════════════════════════════════════ */}
       <Section
+        id="wallet"
         title="Wallet & Network"
         icon="◈"
         accentColor="#4D7CFF"
@@ -433,6 +487,14 @@ export const SettingsTab = () => {
           label="Auto-Sign Transactions"
           desc="Skip manual confirmation within session"
         />
+        <ActionRow
+          label="Deposit / Withdraw"
+          desc={!isConnected ? 'Connect wallet first' : !VAULT_DEPLOYED ? 'Vault contract not deployed yet' : 'Move real funds in or out of the vault'}
+          btnLabel="OPEN VAULT"
+          btnColor="var(--color-success)"
+          onClick={() => setWalletPanelOpen(true)}
+          disabled={!isConnected || !VAULT_DEPLOYED}
+        />
         {isConnected && (
           <div className="pt-3">
             <a
@@ -452,6 +514,7 @@ export const SettingsTab = () => {
           👁  MY CARDS — Decryption
           ═══════════════════════════════════════════════════════════════════ */}
       <Section
+        id="cards"
         title="My Cards"
         icon="👁"
         accentColor="#FFE03D"
@@ -477,6 +540,7 @@ export const SettingsTab = () => {
           ⛽  GAS & TRANSACTIONS
           ═══════════════════════════════════════════════════════════════════ */}
       <Section
+        id="gas"
         title="Gas & Transactions"
         icon="⛽"
         accentColor="#FF8C42"
@@ -509,6 +573,7 @@ export const SettingsTab = () => {
           🎮  GAMEPLAY
           ═══════════════════════════════════════════════════════════════════ */}
       <Section
+        id="gameplay"
         title="Gameplay"
         icon="♠"
         accentColor="#39FF14"
@@ -556,6 +621,7 @@ export const SettingsTab = () => {
           🔊  SOUND & VISUALS
           ═══════════════════════════════════════════════════════════════════ */}
       <Section
+        id="sound"
         title="Sound & Visuals"
         icon="🔊"
         delay={0.24}
@@ -591,6 +657,7 @@ export const SettingsTab = () => {
           🔐  SESSION SECURITY
           ═══════════════════════════════════════════════════════════════════ */}
       <Section
+        id="security"
         title="Session Security"
         icon="🔐"
         accentColor="#FF3B3B"
@@ -628,6 +695,7 @@ export const SettingsTab = () => {
           ◆  STATISTICS
           ═══════════════════════════════════════════════════════════════════ */}
       <Section
+        id="stats"
         title="Statistics"
         icon="◆"
         delay={0.32}
@@ -667,6 +735,7 @@ export const SettingsTab = () => {
           ⛓  SMART CONTRACT
           ═══════════════════════════════════════════════════════════════════ */}
       <Section
+        id="contract"
         title="Smart Contract"
         icon="⛓"
         delay={0.36}
@@ -713,6 +782,7 @@ export const SettingsTab = () => {
           ♠  ABOUT
           ═══════════════════════════════════════════════════════════════════ */}
       <Section
+        id="about"
         title="About"
         icon="♠"
         delay={0.4}
@@ -782,6 +852,7 @@ export const SettingsTab = () => {
           BACK TO LANDING PAGE
         </button>
       </motion.div>
+      </div>{/* end main content */}
     </div>
   );
 };

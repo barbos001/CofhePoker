@@ -1,6 +1,8 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '@/store/useGameStore';
+import { useVaultStore } from '@/store/useVaultStore';
+import { VAULT_DEPLOYED } from '@/config/vault';
 import { PlayTab } from './PlayTab';
 import { HoldemTab } from './HoldemTab';
 import { PvPTab } from './PvPTab';
@@ -8,7 +10,8 @@ import { HoldemPvPTab } from './HoldemPvPTab';
 
 type GameMode = '3card' | 'holdem' | null;
 type Opponent = 'bot' | 'pvp' | null;
-type Step = 'mode' | 'opponent' | 'game';
+type MoneyMode = 'virtual' | 'real' | null;
+type Step = 'mode' | 'opponent' | 'money' | 'game';
 
 // Format: #/room/{gameType}/{tableId}          (public)
 //         #/room/{gameType}/{tableId}:{code}   (private)
@@ -165,6 +168,88 @@ const OpponentSelect = ({
   );
 };
 
+const MoneyModeSelect = ({
+  mode, opponent, onSelect, onBack,
+}: {
+  mode: '3card' | 'holdem';
+  opponent: 'bot' | 'pvp';
+  onSelect: (m: 'virtual' | 'real') => void;
+  onBack: () => void;
+}) => {
+  const modeLabel = mode === '3card' ? '3-Card Poker' : "Texas Hold'em";
+  const oppLabel  = opponent === 'bot' ? 'vs Bot' : 'vs Player';
+  const accent    = mode === '3card' ? '#FFE03D' : '#00BFFF';
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[calc(100vh-112px)] py-12 px-4">
+      {/* Breadcrumb */}
+      <motion.button
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+        onClick={onBack}
+        className="flex items-center gap-2 mb-8 font-mono text-xs tracking-wider transition-colors hover:text-white"
+        style={{ color: 'var(--color-text-muted)' }}
+      >
+        <span>&#8592;</span> PLAY
+        <span style={{ color: 'rgba(255,255,255,0.2)' }}>/</span>
+        <span style={{ color: accent }}>{modeLabel}</span>
+        <span style={{ color: 'rgba(255,255,255,0.2)' }}>/</span>
+        <span>{oppLabel}</span>
+      </motion.button>
+
+      <motion.h2
+        initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+        className="font-clash text-[36px] md:text-[52px] leading-[0.9] tracking-tighter uppercase text-center mb-3"
+        style={{ color: 'white' }}
+      >
+        Choose Stakes
+      </motion.h2>
+      <motion.p
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }}
+        className="font-mono text-xs tracking-widest uppercase mb-12" style={{ color: 'var(--color-text-muted)' }}
+      >
+        How do you want to play?
+      </motion.p>
+
+      <motion.div
+        initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
+        className="flex flex-col md:flex-row gap-4 md:gap-6 w-full max-w-[720px] justify-center"
+      >
+        {/* Virtual chips */}
+        <ModeCard
+          title="Virtual Chips"
+          subtitle="Play for fun"
+          lines={['1 000 chips to start', 'No real money at stake', 'Instant play']}
+          accent="#FFE03D"
+          onClick={() => onSelect('virtual')}
+        />
+
+        {/* Real money */}
+        <ModeCard
+          title="Real Money"
+          subtitle={VAULT_DEPLOYED ? 'ETH / USDT via Vault' : 'Not available yet'}
+          lines={
+            VAULT_DEPLOYED
+              ? ['Deposit ETH or USDT', 'Winnings go to your vault', 'Withdraw anytime']
+              : ['Vault contract not deployed', 'Coming soon', '']
+          }
+          accent="var(--color-success)"
+          onClick={() => VAULT_DEPLOYED && onSelect('real')}
+        />
+      </motion.div>
+
+      {!VAULT_DEPLOYED && (
+        <motion.p
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}
+          className="mt-6 font-mono text-[10px] tracking-wider"
+          style={{ color: 'rgba(255,59,59,0.6)' }}
+        >
+          Real-money vault not yet deployed — virtual chips only
+        </motion.p>
+      )}
+    </div>
+  );
+};
+
 const GameBreadcrumb = ({
   mode, opponent, onBack,
 }: {
@@ -200,22 +285,25 @@ const GameBreadcrumb = ({
   );
 };
 
-function getStep(mode: GameMode, opponent: Opponent): Step {
+function getStep(mode: GameMode, opponent: Opponent, moneyMode: MoneyMode): Step {
   if (!mode) return 'mode';
   if (!opponent) return 'opponent';
+  if (!moneyMode) return 'money';
   return 'game';
 }
 
-function pushPlayState(mode: GameMode, opponent: Opponent) {
-  const step = getStep(mode, opponent);
-  const state = { playStep: step, mode, opponent };
+function pushPlayState(mode: GameMode, opponent: Opponent, moneyMode: MoneyMode) {
+  const step = getStep(mode, opponent, moneyMode);
+  const state = { playStep: step, mode, opponent, moneyMode };
   history.pushState(state, '', '');
 }
 
 export const PlayHub = () => {
   const { playState, activeTab } = useGameStore();
+  const { setRealMoneyMode } = useVaultStore();
   const [mode, setMode] = useState<GameMode>(null);
   const [opponent, setOpponent] = useState<Opponent>(null);
+  const [moneyMode, setMoneyMode] = useState<MoneyMode>(null);
   const suppressPush = useRef(false);
   const prevTabRef = useRef(activeTab);
 
@@ -233,6 +321,7 @@ export const PlayHub = () => {
       // Came back to play from another tab — reset
       setMode(null);
       setOpponent(null);
+      setMoneyMode(null);
     }
     prevTabRef.current = activeTab;
   }, [activeTab, isInGame]);
@@ -251,12 +340,19 @@ export const PlayHub = () => {
       if (!s || !s.playStep || s.playStep === 'mode') {
         setMode(null);
         setOpponent(null);
+        setMoneyMode(null);
       } else if (s.playStep === 'opponent') {
         setMode(s.mode ?? null);
         setOpponent(null);
+        setMoneyMode(null);
+      } else if (s.playStep === 'money') {
+        setMode(s.mode ?? null);
+        setOpponent(s.opponent ?? null);
+        setMoneyMode(null);
       } else if (s.playStep === 'game') {
         setMode(s.mode ?? null);
         setOpponent(s.opponent ?? null);
+        setMoneyMode((s as { moneyMode?: MoneyMode }).moneyMode ?? null);
       }
 
       // Reset flag after React processes the update
@@ -272,38 +368,56 @@ export const PlayHub = () => {
   useEffect(() => {
     const parsed = parseRoomHash();
     if (parsed) {
-      // Auto-navigate to the right game mode + PvP
+      // Auto-navigate to the right game mode + PvP (default virtual for room links)
       setMode(parsed.gameType);
       setOpponent('pvp');
+      setMoneyMode('virtual');
+      setRealMoneyMode(false);
       setRoomLink(parsed);
       // Clean hash so it doesn't re-trigger
       history.replaceState(null, '', window.location.pathname);
     } else {
-      history.replaceState({ playStep: 'mode', mode: null, opponent: null }, '', '');
+      history.replaceState({ playStep: 'mode', mode: null, opponent: null, moneyMode: null }, '', '');
     }
   }, []);
 
   const handleModeSelect = useCallback((m: '3card' | 'holdem') => {
     setMode(m);
     setOpponent(null);
-    pushPlayState(m, null);
+    setMoneyMode(null);
+    pushPlayState(m, null, null);
   }, []);
 
   const handleOpponentSelect = useCallback((o: 'bot' | 'pvp') => {
     setOpponent(o);
-    pushPlayState(mode, o);
+    setMoneyMode(null);
+    pushPlayState(mode, o, null);
   }, [mode]);
+
+  const handleMoneyModeSelect = useCallback((mm: 'virtual' | 'real') => {
+    setMoneyMode(mm);
+    setRealMoneyMode(mm === 'real');
+    pushPlayState(mode, opponent, mm);
+  }, [mode, opponent, setRealMoneyMode]);
 
   const goBackToMode = useCallback(() => {
     if (isInGame) return;
     setMode(null);
     setOpponent(null);
+    setMoneyMode(null);
     if (!suppressPush.current) history.back();
   }, [isInGame]);
 
   const goBackToOpponent = useCallback(() => {
     if (isInGame) return;
     setOpponent(null);
+    setMoneyMode(null);
+    if (!suppressPush.current) history.back();
+  }, [isInGame]);
+
+  const goBackToMoney = useCallback(() => {
+    if (isInGame) return;
+    setMoneyMode(null);
     if (!suppressPush.current) history.back();
   }, [isInGame]);
 
@@ -317,10 +431,15 @@ export const PlayHub = () => {
     return <OpponentSelect mode={mode} onSelect={handleOpponentSelect} onBack={goBackToMode} />;
   }
 
-  // Step 3: Game
+  // Step 3: Money mode selection
+  if (!moneyMode) {
+    return <MoneyModeSelect mode={mode} opponent={opponent} onSelect={handleMoneyModeSelect} onBack={goBackToOpponent} />;
+  }
+
+  // Step 4: Game
   return (
     <>
-      <GameBreadcrumb mode={mode} opponent={opponent} onBack={goBackToOpponent} />
+      <GameBreadcrumb mode={mode} opponent={opponent} onBack={goBackToMoney} />
       <AnimatePresence mode="wait">
         {mode === '3card' && opponent === 'bot' && <PlayTab key="3card-bot" />}
         {mode === '3card' && opponent === 'pvp' && <PvPTab key="3card-pvp" />}

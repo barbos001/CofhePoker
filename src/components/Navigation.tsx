@@ -203,18 +203,18 @@ export const TopBar = () => {
 
           {/* Wallet */}
           <button
-            onClick={() => isConnected && disconnect()}
+            onClick={() => isConnected ? disconnect() : setAppState('connecting')}
             className="flex items-center gap-2 h-9 px-4 rounded-full font-mono text-xs tracking-wider transition-all"
-            title={isConnected ? 'Click to disconnect' : 'Not connected'}
+            title={isConnected ? 'Click to disconnect' : 'Click to connect wallet'}
             style={{
-              background: 'rgba(255,255,255,0.05)',
-              border:     '1px solid rgba(255,255,255,0.08)',
-              color:      'rgba(255,255,255,0.7)',
+              background: isConnected ? 'rgba(255,255,255,0.05)' : 'rgba(255,224,61,0.06)',
+              border:     isConnected ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(255,224,61,0.2)',
+              color:      isConnected ? 'rgba(255,255,255,0.7)' : 'var(--color-primary)',
             }}
-            onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)')}
-            onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)')}
+            onMouseEnter={e => (e.currentTarget.style.borderColor = isConnected ? 'rgba(255,255,255,0.2)' : 'rgba(255,224,61,0.4)')}
+            onMouseLeave={e => (e.currentTarget.style.borderColor = isConnected ? 'rgba(255,255,255,0.08)' : 'rgba(255,224,61,0.2)')}
           >
-            {displayAddr}
+            {isConnected ? displayAddr : 'Connect Wallet'}
             <span
               className="w-2 h-2 rounded-full"
               style={{
