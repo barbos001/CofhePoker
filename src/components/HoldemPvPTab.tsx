@@ -9,13 +9,22 @@ import { useAccount, useWriteContract, usePublicClient } from 'wagmi';
 import { HOLDEM_PVP_CONTRACT_ADDRESS, CIPHER_HOLDEM_PVP_ABI, HoldemPvPState } from '@/config/contractHoldemPvP';
 import { useCofhe } from '@/hooks/useCofhe';
 import { useGameStore } from '@/store/useGameStore';
+import { useVaultStore, formatUsd, ethWeiToUsd, usdToEthWei, formatEth } from '@/store/useVaultStore';
+import { ETH_TOKEN } from '@/config/vault';
 import { getCardData } from '@/lib/poker';
 import { evaluate7 } from '@/lib/holdem';
 import { Card } from '@/components/ui/Card';
 import { sleep } from '@/lib/utils';
+import { SFX } from '@/hooks/useSounds';
 
 const truncAddr = (a: string) => `${a.slice(0, 6)}...${a.slice(-4)}`;
 const LOG = (...a: unknown[]) => console.log('%c[H-PVP]', 'color:#00BFFF;font-weight:bold', ...a);
+const cp = (weight: number, size: number | string, spacing = '0.03em') => ({
+  fontFamily: "'Chakra Petch', sans-serif",
+  fontWeight: weight,
+  fontSize: size,
+  letterSpacing: spacing,
+});
 
 type LobbyState = 'idle' | 'waiting' | 'seated' | 'playing' | 'showdown' | 'result';
 
@@ -30,8 +39,17 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
   const { decryptCard, decryptPublicCard, ensurePermit, isReady: cofheReady } = useCofhe();
-  const setBalance = useGameStore(s => s.setBalance);
+  const { balance, setBalance, finishHand } = useGameStore(s => ({
+    balance: s.balance, setBalance: s.setBalance, finishHand: s.finishHand,
+  }));
+  const { realMoneyMode, selectedToken, ethUsdPrice, ethFree, usdtFree } = useVaultStore();
   const deployed = HOLDEM_PVP_CONTRACT_ADDRESS !== '0x0000000000000000000000000000000000000000';
+
+  // Chip → USD → ETH conversion helpers (1 chip = $1 USD = 10^18 usdWei)
+  const chipToUsdWei = (chips: number) => BigInt(chips) * 10n ** 18n;
+  const chipToEthWei = (chips: number) => usdToEthWei(chipToUsdWei(chips), ethUsdPrice);
+  const chipToUsdStr = (chips: number) => formatUsd(ethWeiToUsd(chipToEthWei(chips), ethUsdPrice));
+  const chipToEthStr = (chips: number) => formatEth(chipToEthWei(chips));
 
   const [lobbyState, setLobbyState] = useState<LobbyState>('idle');
   const [tables, setTables] = useState<TableEntry[]>([]);
@@ -62,6 +80,9 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
   const lastLogRef = useRef('');
   const pollRef = useRef<ReturnType<typeof setInterval>>();
   const logEndRef = useRef<HTMLDivElement>(null);
+  const prevBalanceRef = useRef(0);   // balance snapshot before hand starts (for delta calc)
+  const foldedRef      = useRef(false); // true when current player folded this hand
+  const histSavedRef   = useRef(false); // prevent duplicate history entries per hand
 
   const [narration, setNarration] = useState<{ text: string; key: number }[]>([]);
   const narrationKeyRef = useRef(0);
@@ -167,6 +188,7 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
       } else if (state === HoldemPvPState.BOTH_SEATED) {
         if (lobbyState !== 'seated') {
           addLog(`Opponent joined: ${truncAddr(opp)}`);
+          SFX.notify();
           setLobbyState('seated');
           if (iAmP1) {
             // Only creator (P1) auto-starts
@@ -198,14 +220,40 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
           const [winner, resPot] = await readContract('getResult', [BigInt(tableId)]) as [string, bigint];
           setHandResult({ winner, pot: Number(resPot) });
           setLobbyState('result');
-          await refreshBalance();
+
+          const bal = Number(await readContract('getBalance') as bigint);
+          setBalance(bal);
+          const delta = bal - prevBalanceRef.current;
+
+          // Sound
+          const ZERO = '0x0000000000000000000000000000000000000000';
+          const iWon = winner.toLowerCase() === address!.toLowerCase();
+          const isPush = winner === ZERO;
+          if (iWon || isPush) SFX.win(); else SFX.lose();
 
           // Try to decrypt opponent cards
+          let revOppCards: number[] = [];
           try {
             const [oc0, oc1] = await readContract('getOpponentCards', [BigInt(tableId)]) as [bigint, bigint];
-            const oCards = await Promise.all([oc0, oc1].map(h => decryptPublicCard(h)));
-            setOppCards(oCards);
+            revOppCards = await Promise.all([oc0, oc1].map(h => decryptPublicCard(h)));
+            setOppCards(revOppCards);
           } catch { /* may not be revealed yet */ }
+
+          // Save to hand history
+          if (!histSavedRef.current) {
+            histSavedRef.current = true;
+            const result = foldedRef.current ? 'FOLD' : isPush ? 'PUSH' : iWon ? 'WON' : 'LOST';
+            finishHand({
+              result,
+              delta,
+              desc: `Hold'em PvP vs ${opp ? truncAddr(opp) : 'opponent'}`,
+              pot:     Number(resPot),
+              balance: bal,
+              txHash:  '',
+              playerCards: [...myCards],
+              botCards:    revOppCards,
+            });
+          }
         }
       }
     } catch (e) {
@@ -348,6 +396,7 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
     }
     setDecryptingCards(true);
     decryptRetryCount.current++;
+    SFX.decrypt();
     addLog(`FHE: Decrypting your hole cards... (attempt ${decryptRetryCount.current})`);
     (async () => {
       try {
@@ -361,6 +410,7 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
           LOG(`Hole card: ${d.rankString}${d.suit}`);
         }
         setMyCards(cards);
+        SFX.cardFlip();
         decryptRetryCount.current = 0; // reset on success
         addLog(`Cards decrypted: ${cards.map(c => { const d = getCardData(c); return d.rankString + d.suit; }).join(' ')}`);
       } catch (e) {
@@ -381,6 +431,7 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
     if (expectedCount <= communityCards.length) return;
 
     setDecryptingCommunity(true);
+    SFX.decrypt();
     addLog(`FHE: Decrypting ${roundName} cards...`);
     (async () => {
       try {
@@ -394,6 +445,7 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
           LOG(`Community[${i}]: ${d.rankString}${d.suit}`);
         }
         setCommunityCards(prev => [...prev, ...newCards]);
+        SFX.cardFlip();
       } catch (e) { LOG('Community decrypt error:', e); }
       setDecryptingCommunity(false);
     })();
@@ -401,6 +453,15 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
 
   const handleCreate = useCallback(async () => {
     if (!deployed) { setError('Contract not deployed'); return; }
+    // Vault balance pre-check for real-money mode
+    if (realMoneyMode) {
+      const required = chipToEthWei(buyIn);
+      const available = selectedToken === ETH_TOKEN ? ethFree : usdToEthWei(usdtFree * 10n ** 12n, ethUsdPrice);
+      if (available < required) {
+        setError(`Insufficient vault balance. Need ${chipToEthStr(buyIn)} ETH, have ${formatEth(available)} ETH. Deposit via Settings → Vault.`);
+        return;
+      }
+    }
     setLoading(true); setError('');
     try {
       await ensurePermit();
@@ -479,6 +540,17 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
 
   const handleJoin = useCallback(async (id: number) => {
     if (!deployed) return;
+    // Vault balance pre-check for real-money mode
+    if (realMoneyMode) {
+      const info = await readContract('getTableInfo', [BigInt(id)]) as [string, string, number, bigint, bigint, bigint, boolean, string];
+      const tableBuyIn = Number(info[5]);
+      const required = chipToEthWei(tableBuyIn);
+      const available = selectedToken === ETH_TOKEN ? ethFree : usdToEthWei(usdtFree * 10n ** 12n, ethUsdPrice);
+      if (available < required) {
+        setError(`Insufficient vault balance. Need ${chipToEthStr(tableBuyIn)} ETH. Deposit via Settings → Vault.`);
+        return;
+      }
+    }
     setLoading(true); setError('');
     try {
       // Auto-leave stale table first
@@ -585,8 +657,12 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
     setMyCards([]); setCommunityCards([]); setOppCards([]); setHandResult(null);
     prevRound.current = '';
     decryptRetryCount.current = 0;
+    foldedRef.current    = false;
+    histSavedRef.current = false;
+    prevBalanceRef.current = useGameStore.getState().balance;
     try {
       await ensurePermit();
+      SFX.deal();
       await writeAndWait('startHand', [BigInt(tableId)]);
       setLobbyState('playing');
       await refreshBalance(); // ante deducted
@@ -646,6 +722,10 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
   const handleAct = useCallback(async (action: number) => {
     if (!tableId || actingRef.current) return;
     actingRef.current = true;
+    // Play sound for action type
+    if (action === 1 || action === 2 || action === 5) SFX.chipMove();      // bet / raise / all-in
+    else if (action === 4) SFX.chipMove();                                   // call
+    else SFX.click();                                                         // check
     setLoading(true); setError('');
     try {
       const actionNames: Record<number, string> = { 0: 'Check', 1: 'Bet', 2: 'Raise', 3: 'Fold', 4: 'Call', 5: 'All-in' };
@@ -662,6 +742,8 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
   const handleFold = useCallback(async () => {
     if (!tableId || actingRef.current) return;
     actingRef.current = true;
+    SFX.fold();
+    foldedRef.current = true;
     setLoading(true);
     try {
       await writeAndWait('fold', [BigInt(tableId)]);
@@ -780,23 +862,69 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
 
   if (lobbyState === 'idle') {
     return (
-      <div className="w-full max-w-[900px] mx-auto py-8 px-4 min-h-[calc(100vh-160px)]">
-        <div className="flex items-end justify-between mb-6">
-          <div>
-            <h2 className="font-clash text-3xl tracking-tight" style={{ color: '#00BFFF' }}>Hold'em PvP</h2>
-            <p className="font-mono text-xs mt-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
-              {tables.length} open table{tables.length !== 1 ? 's' : ''}
-            </p>
-          </div>
-          <button onClick={refreshLobby}
-            className="h-10 px-4 rounded-xl font-mono text-xs tracking-wider uppercase"
-            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.6)' }}>
-            REFRESH
-          </button>
-        </div>
+      <div className="w-full max-w-[960px] mx-auto py-10 px-4 min-h-[calc(100vh-160px)]">
 
+        {/* ── Hero header ── */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+          className="text-center mb-10"
+        >
+          <h1
+            className="uppercase mb-2"
+            style={{
+              fontFamily: "'Chakra Petch', sans-serif",
+              fontWeight: 700,
+              fontSize: 'clamp(40px, 7vw, 64px)',
+              letterSpacing: '0.08em',
+              lineHeight: 1,
+              color: '#00BFFF',
+              textShadow: '0 0 40px rgba(0,191,255,0.3)',
+            }}
+          >
+            Hold'em PvP
+          </h1>
+          <p
+            className="uppercase"
+            style={{
+              fontFamily: "'Chakra Petch', sans-serif",
+              fontWeight: 400,
+              fontSize: 11,
+              letterSpacing: '0.14em',
+              color: 'rgba(255,255,255,0.35)',
+            }}
+          >
+            {tables.length > 0 ? `${tables.length} open table${tables.length !== 1 ? 's' : ''} · join or create` : 'No open tables · be the first to create one'}
+          </p>
+        </motion.div>
+
+        {/* ── Vault balance banner (real money mode) ── */}
+        {realMoneyMode && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
+            className="mb-5 px-5 py-3 rounded-xl flex items-center justify-between gap-4"
+            style={{ background: 'rgba(0,255,120,0.06)', border: '1px solid rgba(0,255,120,0.18)' }}
+          >
+            <div className="flex items-center gap-3">
+              <span style={{ ...cp(600, 11, '0.1em'), color: '#00FF78', textTransform: 'uppercase' }}>Vault</span>
+              <span style={{ ...cp(400, 12, '0.03em'), color: 'rgba(255,255,255,0.5)' }}>
+                {selectedToken === ETH_TOKEN
+                  ? `${formatEth(ethFree)} ETH available`
+                  : `${formatEth(usdtFree)} USDT available`}
+              </span>
+            </div>
+            <span style={{ ...cp(400, 11, '0.08em'), color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase' }}>
+              contract settlement pending
+            </span>
+          </motion.div>
+        )}
+
+        {/* ── Error banner ── */}
         {error && (
-          <div className="mb-4 px-4 py-2.5 rounded-xl font-mono text-xs flex items-center justify-between gap-3" style={{ background: 'rgba(255,59,59,0.08)', border: '1px solid rgba(255,59,59,0.2)', color: 'var(--color-danger)' }}>
+          <motion.div
+            initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
+            className="mb-6 px-5 py-3 rounded-2xl font-mono text-xs flex items-center justify-between gap-3"
+            style={{ background: 'rgba(255,59,59,0.08)', border: '1px solid rgba(255,59,59,0.25)', color: 'var(--color-danger)' }}
+          >
             <span>{error}</span>
             <button
               onClick={async () => {
@@ -810,107 +938,299 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
                   refreshLobby();
                 } catch { /* */ }
               }}
-              className="shrink-0 px-3 py-1.5 rounded-lg font-mono text-[10px] font-bold uppercase"
-              style={{ background: 'rgba(255,59,59,0.15)', color: 'var(--color-danger)' }}
+              className="shrink-0 px-3 py-1.5 rounded-lg font-mono text-[10px] font-bold uppercase tracking-wider"
+              style={{ background: 'rgba(255,59,59,0.15)', color: 'var(--color-danger)', border: '1px solid rgba(255,59,59,0.3)' }}
             >
               FORCE LEAVE
             </button>
-          </div>
+          </motion.div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-          {/* ── Create Room Panel ── */}
-          <div className="lg:col-span-1 rounded-2xl p-5 space-y-4"
-            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
-            <h3 className="font-mono text-sm font-bold tracking-wider uppercase" style={{ color: 'rgba(255,255,255,0.9)' }}>Create Room</h3>
+        {/* ── Main 2-col grid: action panels left, tables right ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
 
-            {/* Buy-in */}
-            <div>
-              <span className="font-mono text-[10px] tracking-wider uppercase block mb-2" style={{ color: 'var(--color-text-muted)' }}>Buy-in</span>
-              <div className="flex gap-1.5">
-                {[10, 25, 50, 100].map(v => (
-                  <button key={v} onClick={() => setBuyIn(v)}
-                    className="flex-1 h-9 rounded-lg font-mono text-xs font-bold"
-                    style={{
-                      background: buyIn === v ? '#00BFFF' : 'rgba(255,255,255,0.04)',
-                      color: buyIn === v ? '#000' : 'rgba(255,255,255,0.5)',
-                      border: buyIn === v ? 'none' : '1px solid rgba(255,255,255,0.08)',
-                    }}>{v}</button>
-                ))}
+          {/* Left column: Create + Join stacked */}
+          <div className="lg:col-span-2 flex flex-col gap-5">
+
+            {/* ── CREATE ROOM ── */}
+            <motion.div
+              initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}
+              className="rounded-2xl p-6 relative overflow-hidden"
+              style={{
+                background: 'linear-gradient(135deg, rgba(0,191,255,0.08) 0%, rgba(0,191,255,0.03) 100%)',
+                border: '1px solid rgba(0,191,255,0.22)',
+              }}
+            >
+              {/* Glow orb */}
+              <div
+                className="absolute -top-10 -right-10 w-40 h-40 rounded-full pointer-events-none"
+                style={{ background: 'radial-gradient(circle, rgba(0,191,255,0.12) 0%, transparent 70%)' }}
+              />
+              <div className="relative z-10 space-y-5">
+                <div className="flex items-center gap-2.5">
+                  <span
+                    className="w-8 h-8 rounded-xl flex items-center justify-center text-sm font-bold"
+                    style={{ background: 'rgba(0,191,255,0.15)', border: '1px solid rgba(0,191,255,0.3)', color: '#00BFFF' }}
+                  >+</span>
+                  <div>
+                    <h3
+                      className="uppercase"
+                      style={{ fontFamily: "'Chakra Petch', sans-serif", fontWeight: 600, fontSize: 20, letterSpacing: '0.06em', color: '#00BFFF' }}
+                    >Create Room</h3>
+                    <p style={{ fontFamily: "'Chakra Petch', sans-serif", fontWeight: 400, fontSize: 11, letterSpacing: '0.03em', color: 'rgba(255,255,255,0.35)' }}>Set stakes and go live</p>
+                  </div>
+                </div>
+
+                {/* Buy-in */}
+                <div>
+                  <div className="flex items-center justify-between mb-2.5">
+                    <span className="uppercase" style={{ fontFamily: "'Chakra Petch', sans-serif", fontWeight: 400, fontSize: 10, letterSpacing: '0.14em', color: 'rgba(255,255,255,0.4)' }}>
+                      Buy-in {realMoneyMode ? `· ${selectedToken === ETH_TOKEN ? 'ETH' : 'USDT'}` : '(chips)'}
+                    </span>
+                    {realMoneyMode && (
+                      <span style={{ fontFamily: "'Chakra Petch', sans-serif", fontWeight: 600, fontSize: 12, color: '#00FF78' }}>
+                        {selectedToken === ETH_TOKEN ? chipToEthStr(buyIn) + ' ETH' : chipToUsdStr(buyIn)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    {[10, 25, 50, 100].map(v => (
+                      <button key={v} onClick={() => setBuyIn(v)}
+                        className="flex-1 rounded-xl font-mono font-bold transition-all flex flex-col items-center justify-center gap-0.5"
+                        style={{
+                          height: realMoneyMode ? 48 : 40,
+                          background: buyIn === v ? '#00BFFF' : 'rgba(0,191,255,0.06)',
+                          color: buyIn === v ? '#000' : 'rgba(255,255,255,0.5)',
+                          border: buyIn === v ? '1.5px solid #00BFFF' : '1px solid rgba(0,191,255,0.15)',
+                          boxShadow: buyIn === v ? '0 0 16px rgba(0,191,255,0.3)' : 'none',
+                        }}
+                      >
+                        <span style={{ fontSize: 14 }}>{v}</span>
+                        {realMoneyMode && (
+                          <span style={{ fontSize: 9, opacity: buyIn === v ? 0.6 : 0.4, fontFamily: "'Chakra Petch', sans-serif" }}>
+                            {selectedToken === ETH_TOKEN ? chipToEthStr(v).slice(0, 6) : '$' + v}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                  {realMoneyMode && (
+                    <p className="mt-2" style={{ fontFamily: "'Chakra Petch', sans-serif", fontSize: 10, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.03em' }}>
+                      1 chip = $1 USD · funds locked from your vault for the hand
+                    </p>
+                  )}
+                </div>
+
+                {/* Public / Private */}
+                <button
+                  onClick={() => setIsPrivate(!isPrivate)}
+                  className="flex items-center gap-3 w-full py-3 px-4 rounded-xl font-mono text-xs transition-all"
+                  style={{
+                    background: isPrivate ? 'rgba(179,102,255,0.1)' : 'rgba(255,255,255,0.04)',
+                    border: isPrivate ? '1px solid rgba(179,102,255,0.3)' : '1px solid rgba(255,255,255,0.1)',
+                    color: 'rgba(255,255,255,0.75)',
+                  }}
+                >
+                  <div
+                    className="w-10 h-5 rounded-full relative transition-all shrink-0"
+                    style={{ background: isPrivate ? 'var(--color-fhe)' : 'rgba(255,255,255,0.15)' }}
+                  >
+                    <div
+                      className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all"
+                      style={{ left: isPrivate ? 22 : 2 }}
+                    />
+                  </div>
+                  <span>{isPrivate ? '🔒 Private — invite only' : '🌐 Public — visible in lobby'}</span>
+                </button>
+
+                <button
+                  onClick={handleCreate}
+                  disabled={loading}
+                  className="w-full h-12 rounded-xl uppercase transition-all disabled:opacity-40"
+                  style={{
+                    fontFamily: "'Chakra Petch', sans-serif",
+                    fontWeight: 700,
+                    fontSize: 13,
+                    letterSpacing: '0.14em',
+                    background: loading ? 'rgba(0,191,255,0.5)' : '#00BFFF',
+                    color: '#000',
+                    boxShadow: loading ? 'none' : '0 0 24px rgba(0,191,255,0.35)',
+                  }}
+                >
+                  {loading ? 'CREATING...' : '+ CREATE TABLE'}
+                </button>
               </div>
-            </div>
+            </motion.div>
 
-            {/* Public / Private toggle */}
-            <button onClick={() => setIsPrivate(!isPrivate)}
-              className="flex items-center gap-3 w-full py-2.5 px-3 rounded-xl font-mono text-xs transition-all"
-              style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.7)' }}>
-              <div className="w-9 h-5 rounded-full relative transition-all shrink-0"
-                style={{ background: isPrivate ? 'var(--color-fhe)' : 'rgba(255,255,255,0.1)' }}>
-                <div className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all" style={{ left: isPrivate ? 18 : 2 }} />
+            {/* ── JOIN BY LINK ── */}
+            <motion.div
+              initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.14 }}
+              className="rounded-2xl p-6 relative overflow-hidden"
+              style={{
+                background: 'linear-gradient(135deg, rgba(179,102,255,0.08) 0%, rgba(179,102,255,0.02) 100%)',
+                border: '1px solid rgba(179,102,255,0.22)',
+              }}
+            >
+              <div
+                className="absolute -bottom-10 -left-10 w-40 h-40 rounded-full pointer-events-none"
+                style={{ background: 'radial-gradient(circle, rgba(179,102,255,0.1) 0%, transparent 70%)' }}
+              />
+              <div className="relative z-10 space-y-4">
+                <div className="flex items-center gap-2.5">
+                  <span
+                    className="w-8 h-8 rounded-xl flex items-center justify-center text-sm"
+                    style={{ background: 'rgba(179,102,255,0.15)', border: '1px solid rgba(179,102,255,0.3)', color: 'var(--color-fhe)' }}
+                  >↗</span>
+                  <div>
+                    <h3
+                      className="uppercase"
+                      style={{ fontFamily: "'Chakra Petch', sans-serif", fontWeight: 600, fontSize: 20, letterSpacing: '0.06em', color: 'var(--color-fhe)' }}
+                    >Join by Link</h3>
+                    <p style={{ fontFamily: "'Chakra Petch', sans-serif", fontWeight: 400, fontSize: 11, letterSpacing: '0.03em', color: 'rgba(255,255,255,0.35)' }}>Paste invite link or code</p>
+                  </div>
+                </div>
+
+                <div>
+                  <input
+                    value={joinInput}
+                    onChange={e => setJoinInput(e.target.value)}
+                    placeholder="https://...#/room/holdem/5:0x..."
+                    className="w-full h-11 px-4 rounded-xl font-mono text-[11px]"
+                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(179,102,255,0.2)', color: '#fff', outline: 'none' }}
+                    onFocus={e => e.currentTarget.style.borderColor = 'rgba(179,102,255,0.5)'}
+                    onBlur={e => e.currentTarget.style.borderColor = 'rgba(179,102,255,0.2)'}
+                  />
+                  <span className="font-mono text-[9px] mt-1.5 block" style={{ color: 'rgba(255,255,255,0.25)' }}>
+                    Accepts full URL, short code, or table ID
+                  </span>
+                </div>
+
+                <button
+                  onClick={handleJoinByCode}
+                  disabled={loading || !joinInput.trim()}
+                  className="w-full h-12 rounded-xl uppercase transition-all disabled:opacity-30"
+                  style={{
+                    fontFamily: "'Chakra Petch', sans-serif",
+                    fontWeight: 700,
+                    fontSize: 13,
+                    letterSpacing: '0.14em',
+                    background: 'var(--color-fhe)',
+                    color: '#000',
+                    boxShadow: joinInput.trim() ? '0 0 24px rgba(179,102,255,0.3)' : 'none',
+                  }}
+                >
+                  JOIN ROOM
+                </button>
               </div>
-              <span>{isPrivate ? 'Private (invite code)' : 'Public (visible in lobby)'}</span>
-            </button>
-
-            <button onClick={handleCreate} disabled={loading}
-              className="w-full h-11 rounded-xl font-mono text-sm font-bold tracking-wider uppercase disabled:opacity-50"
-              style={{ background: '#00BFFF', color: '#000' }}>
-              {loading ? 'CREATING...' : '+ CREATE TABLE'}
-            </button>
+            </motion.div>
           </div>
 
-          {/* ── Join by Code Panel ── */}
-          <div className="lg:col-span-1 rounded-2xl p-5 space-y-4"
-            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
-            <h3 className="font-mono text-sm font-bold tracking-wider uppercase" style={{ color: 'rgba(255,255,255,0.9)' }}>Join by Link</h3>
+          {/* Right column: Open Tables */}
+          <motion.div
+            initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 }}
+            className="lg:col-span-3 rounded-2xl overflow-hidden flex flex-col"
+            style={{
+              background: 'rgba(255,255,255,0.03)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              minHeight: 320,
+            }}
+          >
+            {/* Table header */}
+            <div
+              className="flex items-center justify-between px-6 py-4 shrink-0"
+              style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}
+            >
+              <div className="flex items-center gap-2.5">
+                <span
+                  className="w-2 h-2 rounded-full"
+                  style={{
+                    background: tables.length > 0 ? 'var(--color-success)' : 'rgba(255,255,255,0.2)',
+                    boxShadow: tables.length > 0 ? '0 0 8px rgba(0,232,108,0.5)' : 'none',
+                    animation: tables.length > 0 ? 'ambient-breathe 2s ease-in-out infinite' : 'none',
+                  }}
+                />
+                <h3
+                  className="uppercase"
+                  style={{ fontFamily: "'Chakra Petch', sans-serif", fontWeight: 600, fontSize: 20, letterSpacing: '0.06em', color: 'rgba(255,255,255,0.9)' }}
+                >
+                  Open Tables
+                </h3>
+                {tables.length > 0 && (
+                  <span
+                    className="font-mono text-[10px] px-2 py-0.5 rounded-full"
+                    style={{ background: 'rgba(0,232,108,0.1)', color: 'var(--color-success)', border: '1px solid rgba(0,232,108,0.2)' }}
+                  >{tables.length}</span>
+                )}
+              </div>
+              <button
+                onClick={refreshLobby}
+                className="h-8 px-3 rounded-lg uppercase transition-all hover:brightness-125"
+                style={{ fontFamily: "'Chakra Petch', sans-serif", fontWeight: 500, fontSize: 10, letterSpacing: '0.12em', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)' }}
+              >
+                ↺ REFRESH
+              </button>
+            </div>
 
-            <div>
-              <span className="font-mono text-[10px] tracking-wider uppercase block mb-1.5" style={{ color: 'var(--color-text-muted)' }}>Paste room link or code</span>
-              <input value={joinInput} onChange={e => setJoinInput(e.target.value)} placeholder="https://...#/room/holdem/5:0x..."
-                className="w-full h-10 px-3 rounded-lg font-mono text-[10px]"
-                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', outline: 'none' }}
-                onFocus={e => e.currentTarget.style.borderColor = 'rgba(179,102,255,0.4)'}
-                onBlur={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'} />
-              <span className="font-mono text-[9px] mt-1 block" style={{ color: 'rgba(255,255,255,0.25)' }}>
-                Accepts full URL, short code, or table ID
+            {/* Sync note */}
+            <div className="px-6 py-2 shrink-0" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+              <span style={{ fontFamily: "'Chakra Petch', sans-serif", fontSize: 9, letterSpacing: '0.08em', color: 'rgba(255,255,255,0.2)' }}>
+                LIVE · read from on-chain contract · auto-refreshes every 10s
               </span>
             </div>
 
-            <button onClick={handleJoinByCode} disabled={loading || !joinInput.trim()}
-              className="w-full h-11 rounded-xl font-mono text-sm font-bold tracking-wider uppercase disabled:opacity-30"
-              style={{ background: 'var(--color-fhe)', color: '#000' }}>
-              JOIN
-            </button>
-          </div>
-
-          {/* ── Open Tables Panel ── */}
-          <div className="lg:col-span-1 rounded-2xl overflow-hidden"
-            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
-            <div className="px-5 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-              <h3 className="font-mono text-sm font-bold tracking-wider uppercase" style={{ color: 'rgba(255,255,255,0.9)' }}>Open Tables</h3>
-            </div>
+            {/* Table list */}
             {tables.length === 0 ? (
-              <div className="py-8 text-center">
-                <p className="font-satoshi text-sm" style={{ color: 'rgba(255,255,255,0.25)' }}>No open tables</p>
+              <div className="flex-1 flex flex-col items-center justify-center py-12 gap-3">
+                <span className="text-4xl opacity-20">♠</span>
+                <p className="font-mono text-sm" style={{ color: 'rgba(255,255,255,0.2)' }}>No open tables yet</p>
+                <p className="font-mono text-[10px]" style={{ color: 'rgba(255,255,255,0.12)' }}>Create one and wait for a challenger</p>
               </div>
             ) : (
-              <div className="max-h-[280px] overflow-y-auto">
-                {tables.map(t => (
-                  <div key={t.id} className="flex items-center justify-between px-5 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                    <div>
-                      <span className="font-mono text-xs font-bold" style={{ color: 'rgba(255,255,255,0.7)' }}>#{t.id}</span>
-                      <span className="font-mono text-[10px] ml-2" style={{ color: 'rgba(255,255,255,0.35)' }}>{truncAddr(t.creator)}</span>
-                      <span className="font-mono text-[10px] ml-2" style={{ color: '#00BFFF' }}>{t.buyIn}</span>
+              <div className="flex-1 overflow-y-auto">
+                {/* Column headers */}
+                <div
+                  className="grid grid-cols-[auto_1fr_auto_auto] gap-4 px-6 py-2.5"
+                  style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+                >
+                  {['#', 'Host', 'Buy-in', ''].map((h, i) => (
+                    <span key={i} className="uppercase" style={{ fontFamily: "'Chakra Petch', sans-serif", fontWeight: 400, fontSize: 9, letterSpacing: '0.18em', color: 'rgba(255,255,255,0.25)' }}>{h}</span>
+                  ))}
+                </div>
+                {tables.map((t, idx) => (
+                  <motion.div
+                    key={t.id}
+                    initial={{ opacity: 0, x: 8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: idx * 0.04 }}
+                    className="grid grid-cols-[auto_1fr_auto_auto] gap-4 items-center px-6 py-3.5 transition-colors hover:bg-white/[0.03]"
+                    style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+                  >
+                    <span className="font-mono text-xs font-bold" style={{ color: 'rgba(255,255,255,0.5)' }}>#{t.id}</span>
+                    <span className="font-mono text-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>{truncAddr(t.creator)}</span>
+                    <div className="flex flex-col items-end gap-0.5">
+                      <span
+                        className="font-mono text-xs font-bold px-2 py-0.5 rounded-lg"
+                        style={{ background: 'rgba(0,191,255,0.1)', color: '#00BFFF', border: '1px solid rgba(0,191,255,0.2)' }}
+                      >{t.buyIn}</span>
+                      {realMoneyMode && (
+                        <span style={{ fontFamily: "'Chakra Petch', sans-serif", fontSize: 9, color: 'rgba(255,255,255,0.35)' }}>
+                          {selectedToken === ETH_TOKEN ? chipToEthStr(t.buyIn) + ' ETH' : '$' + t.buyIn}
+                        </span>
+                      )}
                     </div>
-                    <button onClick={() => handleJoin(t.id)} disabled={loading}
-                      className="h-7 px-3 rounded-lg font-mono text-[10px] font-bold uppercase disabled:opacity-50"
-                      style={{ background: 'rgba(0,232,108,0.1)', color: 'var(--color-success)', border: '1px solid rgba(0,232,108,0.2)' }}>
+                    <button
+                      onClick={() => handleJoin(t.id)}
+                      disabled={loading}
+                      className="h-8 px-4 rounded-lg uppercase transition-all disabled:opacity-40 hover:brightness-125"
+                      style={{ fontFamily: "'Chakra Petch', sans-serif", fontWeight: 600, fontSize: 10, letterSpacing: '0.12em', background: 'rgba(0,232,108,0.12)', color: 'var(--color-success)', border: '1px solid rgba(0,232,108,0.25)' }}
+                    >
                       JOIN
                     </button>
-                  </div>
+                  </motion.div>
                 ))}
               </div>
             )}
-          </div>
+          </motion.div>
         </div>
       </div>
     );
@@ -918,118 +1238,196 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
 
   if (lobbyState === 'waiting') {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
-        <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }} className="text-4xl">&#9876;</motion.div>
-        <h2 className="font-clash text-2xl" style={{ color: '#00BFFF' }}>Waiting for Opponent</h2>
-        <p className="font-mono text-xs" style={{ color: 'var(--color-text-muted)' }}>Table #{tableId}</p>
+      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-160px)] py-12 px-4" style={{ background: '#0A0D12' }}>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+          className="w-full max-w-[500px] flex flex-col items-center gap-6"
+        >
+          {/* Spinner */}
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ duration: 2.5, repeat: Infinity, ease: 'linear' }}
+            style={{ width: 48, height: 48, borderRadius: 999, border: '2px solid rgba(0,191,255,0.15)', borderTopColor: '#00BFFF' }}
+          />
 
-        {/* Private room — share invite code */}
-        {isPrivate && inviteCode && (
-          <div className="flex flex-col items-center gap-3 mt-2 px-6 py-5 rounded-xl max-w-[460px] w-full"
-            style={{ background: 'rgba(179,102,255,0.06)', border: '1px solid rgba(179,102,255,0.2)' }}>
-            <span className="font-mono text-xs tracking-wider uppercase font-bold" style={{ color: 'var(--color-fhe)' }}>
-              Private room — share invite code
-            </span>
-            <div className="w-full px-3 py-2.5 rounded-lg font-mono text-[11px] break-all select-all cursor-text text-center"
-              style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(179,102,255,0.15)', color: 'rgba(255,255,255,0.8)' }}>
-              {inviteCode}
+          <div className="text-center">
+            <h2 className="uppercase mb-1" style={{ ...cp(700, 28, '0.06em'), color: '#00BFFF' }}>Waiting for Opponent</h2>
+            <p style={{ ...cp(400, 12, '0.06em'), color: 'rgba(255,255,255,0.35)' }}>Table #{tableId} · open to join</p>
+          </div>
+
+          {/* Private room — share invite */}
+          {isPrivate && inviteCode && (
+            <div className="w-full flex flex-col gap-4 p-5 rounded-xl"
+              style={{ background: '#0F1318', border: '1px solid rgba(179,102,255,0.25)', borderRadius: 12 }}>
+              <span className="uppercase" style={{ ...cp(500, 10, '0.14em'), color: '#B366FF' }}>
+                Private Room — Share Invite
+              </span>
+              <div className="w-full px-4 py-3 rounded-lg break-all select-all cursor-text text-center"
+                style={{ ...cp(400, 11), background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(179,102,255,0.15)', color: 'rgba(255,255,255,0.8)' }}>
+                {inviteCode}
+              </div>
+              <div className="flex gap-2 w-full">
+                <button
+                  onClick={() => { navigator.clipboard.writeText(inviteCode); addLog('Invite code copied!'); }}
+                  className="flex-1 h-10 uppercase transition-all"
+                  style={{ ...cp(600, 11, '0.1em'), borderRadius: 8, background: '#B366FF', color: '#000' }}
+                >
+                  COPY CODE
+                </button>
+                <button
+                  onClick={() => { const link = `${window.location.origin}${window.location.pathname}#/room/holdem/${inviteCode}`; navigator.clipboard.writeText(link); addLog('Room link copied!'); }}
+                  className="flex-1 h-10 uppercase transition-all"
+                  style={{ ...cp(600, 11, '0.1em'), borderRadius: 8, background: 'rgba(0,191,255,0.12)', color: '#00BFFF', border: '1px solid rgba(0,191,255,0.25)' }}
+                >
+                  COPY LINK
+                </button>
+              </div>
+              <span style={{ ...cp(400, 9, '0.06em'), color: 'rgba(255,255,255,0.25)' }}>
+                Share code or full URL — opponent pastes in "Join by Link"
+              </span>
             </div>
-            <div className="flex gap-2 w-full">
+          )}
+
+          {/* Public room */}
+          {!isPrivate && tableId && (
+            <div className="w-full flex flex-col items-center gap-3 p-5 rounded-xl"
+              style={{ background: '#0F1318', border: '1px solid rgba(0,229,255,0.12)', borderRadius: 12 }}>
+              <span style={{ ...cp(400, 12), color: 'rgba(255,255,255,0.35)' }}>
+                Public table — visible in lobby for anyone to join
+              </span>
               <button
-                onClick={() => {
-                  navigator.clipboard.writeText(inviteCode);
-                  addLog('Invite code copied!');
-                }}
-                className="flex-1 h-10 rounded-lg font-mono text-sm font-bold tracking-wider uppercase"
-                style={{ background: 'var(--color-fhe)', color: '#000' }}>
-                COPY CODE
-              </button>
-              <button
-                onClick={() => {
-                  const link = `${window.location.origin}${window.location.pathname}#/room/holdem/${inviteCode}`;
-                  navigator.clipboard.writeText(link);
-                  addLog('Room link copied!');
-                }}
-                className="flex-1 h-10 rounded-lg font-mono text-sm font-bold tracking-wider uppercase"
-                style={{ background: 'rgba(0,191,255,0.15)', color: '#00BFFF', border: '1px solid rgba(0,191,255,0.3)' }}>
-                COPY LINK
+                onClick={() => { const link = `${window.location.origin}${window.location.pathname}#/room/holdem/${tableId}`; navigator.clipboard.writeText(link); addLog('Room link copied!'); }}
+                className="h-10 px-6 uppercase transition-all"
+                style={{ ...cp(600, 11, '0.1em'), borderRadius: 8, background: 'rgba(0,191,255,0.1)', color: '#00BFFF', border: '1px solid rgba(0,191,255,0.22)' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(0,191,255,0.18)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(0,191,255,0.1)'; }}
+              >
+                COPY ROOM LINK
               </button>
             </div>
-            <span className="font-mono text-[9px]" style={{ color: 'rgba(255,255,255,0.25)' }}>
-              Share code or full link — opponent pastes in "Join by Code"
-            </span>
-          </div>
-        )}
+          )}
 
-        {/* Public room — show table number + copy link */}
-        {!isPrivate && tableId && (
-          <div className="flex flex-col items-center gap-3 mt-2">
-            <p className="font-mono text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>
-              Public table — visible in lobby for everyone
-            </p>
-            <button
-              onClick={() => {
-                const link = `${window.location.origin}${window.location.pathname}#/room/holdem/${tableId}`;
-                navigator.clipboard.writeText(link);
-                addLog('Room link copied!');
-              }}
-              className="h-9 px-5 rounded-lg font-mono text-xs font-bold tracking-wider uppercase"
-              style={{ background: 'rgba(0,191,255,0.1)', color: '#00BFFF', border: '1px solid rgba(0,191,255,0.2)' }}>
-              📋 COPY ROOM LINK
-            </button>
-          </div>
-        )}
+          {waitingCountdown !== null && (
+            <div style={{ ...cp(400, 13), color: waitingCountdown <= 10 ? '#FF4444' : 'rgba(255,255,255,0.4)' }}>
+              Auto-close in {waitingCountdown}s
+            </div>
+          )}
 
-        {waitingCountdown !== null && (
-          <div className="font-mono text-sm mt-2" style={{ color: waitingCountdown <= 10 ? 'var(--color-danger)' : 'var(--color-text-muted)' }}>
-            Auto-close in {waitingCountdown}s
-          </div>
-        )}
-        <button onClick={handleLeave} className="font-mono text-xs tracking-wider mt-3 hover:text-white transition-colors"
-          style={{ color: 'var(--color-text-dark)' }}>CANCEL</button>
+          <button
+            onClick={handleLeave}
+            className="uppercase transition-colors"
+            style={{ ...cp(400, 11, '0.1em'), color: 'rgba(255,255,255,0.25)' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.6)'; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.25)'; }}
+          >
+            CANCEL
+          </button>
+        </motion.div>
       </div>
     );
   }
 
   if (lobbyState === 'seated') {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
-        <div className="text-4xl">&#9876;</div>
-        <h2 className="font-clash text-2xl" style={{ color: 'var(--color-success)' }}>Opponent Found!</h2>
-        {opponent && <p className="font-mono text-xs" style={{ color: 'var(--color-text-muted)' }}>{truncAddr(opponent)}</p>}
-        {isCreator ? (
-          <button onClick={handleStartHand} disabled={loading}
-            className="h-12 px-10 rounded-full font-mono text-sm font-bold tracking-widest uppercase disabled:opacity-50"
-            style={{ background: '#00BFFF', color: '#000' }}>
-            {loading ? 'STARTING...' : 'START HAND'}
-          </button>
-        ) : (
-          <motion.p
-            animate={{ opacity: [0.4, 1, 0.4] }}
-            transition={{ duration: 2, repeat: Infinity }}
-            className="font-mono text-sm"
-            style={{ color: 'var(--color-text-muted)' }}
+      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-160px)] py-12 px-4" style={{ background: '#0A0D12' }}>
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+          className="flex flex-col items-center gap-6 w-full max-w-[420px]"
+        >
+          {/* Pulsing success dot */}
+          <div className="relative flex items-center justify-center" style={{ width: 64, height: 64 }}>
+            <motion.div
+              className="absolute rounded-full"
+              style={{ width: 64, height: 64, background: 'rgba(0,232,108,0.12)', border: '1px solid rgba(0,232,108,0.3)' }}
+              animate={{ scale: [1, 1.3, 1], opacity: [0.6, 0.2, 0.6] }}
+              transition={{ duration: 2, repeat: Infinity }}
+            />
+            <span style={{ fontSize: 28 }}>✓</span>
+          </div>
+
+          <div className="text-center">
+            <h2 className="uppercase mb-1" style={{ ...cp(700, 28, '0.06em'), color: '#00FF78' }}>Opponent Found!</h2>
+            {opponent && (
+              <p style={{ ...cp(400, 12, '0.06em'), color: 'rgba(255,255,255,0.4)' }}>{truncAddr(opponent)}</p>
+            )}
+          </div>
+
+          <div className="w-full p-5 rounded-xl flex flex-col gap-4"
+            style={{ background: '#0F1318', border: '1px solid rgba(0,229,255,0.12)', borderRadius: 12 }}>
+            {isCreator ? (
+              <>
+                <p style={{ ...cp(400, 13), color: 'rgba(255,255,255,0.5)', textAlign: 'center' }}>
+                  Both players are seated. You're the host — start the hand when ready.
+                </p>
+                <button
+                  onClick={handleStartHand}
+                  disabled={loading}
+                  className="w-full h-12 uppercase transition-all disabled:opacity-50"
+                  style={{
+                    ...cp(700, 13, '0.14em'),
+                    borderRadius: 10,
+                    background: loading ? 'rgba(0,191,255,0.5)' : '#00BFFF',
+                    color: '#000',
+                    boxShadow: loading ? 'none' : '0 0 24px rgba(0,191,255,0.35)',
+                  }}
+                >
+                  {loading ? 'STARTING...' : 'START HAND'}
+                </button>
+              </>
+            ) : (
+              <motion.p
+                animate={{ opacity: [0.4, 1, 0.4] }}
+                transition={{ duration: 2, repeat: Infinity }}
+                className="text-center"
+                style={{ ...cp(400, 14), color: 'rgba(255,255,255,0.5)' }}
+              >
+                Waiting for host to start the hand...
+              </motion.p>
+            )}
+          </div>
+
+          <button
+            onClick={handleLeave}
+            className="uppercase transition-colors"
+            style={{ ...cp(400, 11, '0.1em'), color: 'rgba(255,255,255,0.25)' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.6)'; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.25)'; }}
           >
-            Waiting for host to start...
-          </motion.p>
-        )}
-        <button onClick={handleLeave} className="font-mono text-xs tracking-wider mt-2 hover:text-white transition-colors"
-          style={{ color: 'var(--color-text-dark)' }}>LEAVE TABLE</button>
+            LEAVE TABLE
+          </button>
+        </motion.div>
       </div>
     );
   }
 
   if (lobbyState === 'playing' || lobbyState === 'showdown') {
     return (
-      <div className="flex w-full max-w-[1100px] mx-auto py-6 px-4 gap-6">
+      <div className="flex w-full max-w-[1100px] mx-auto py-6 px-4 gap-6" style={{ background: '#0A0D12', minHeight: 'calc(100vh - 112px)' }}>
         {/* Main game area */}
         <div className="flex flex-col items-center flex-1 gap-4">
-        <div className="flex items-center gap-3 w-full">
-          <h2 className="font-clash text-xl" style={{ color: '#00BFFF' }}>Table #{tableId}</h2>
-          <span className="font-mono text-xs px-3 py-1 rounded-full" style={{ background: 'rgba(0,191,255,0.08)', color: '#00BFFF' }}>{roundName || 'Showdown'}</span>
-          <button onClick={handleLeave}
-            className="ml-auto h-8 px-4 rounded-full font-mono text-[11px] tracking-wider uppercase hover:bg-red-500/20 transition-all"
-            style={{ color: 'var(--color-danger)', border: '1px solid rgba(255,59,59,0.25)' }}>
+        {/* Table header bar */}
+        <div
+          className="flex items-center gap-3 w-full px-4 py-3 rounded-xl"
+          style={{ background: '#0F1318', border: '1px solid rgba(0,229,255,0.10)', borderRadius: 12 }}
+        >
+          <span style={{ ...cp(700, 15, '0.06em'), color: '#00BFFF' }}>Table #{tableId}</span>
+          <span
+            className="uppercase px-2.5 py-0.5 rounded-full"
+            style={{ ...cp(600, 10, '0.12em'), background: 'rgba(0,191,255,0.1)', color: '#00BFFF', border: '1px solid rgba(0,191,255,0.2)' }}
+          >{roundName || 'Showdown'}</span>
+          {isMyTurn && (
+            <span
+              className="uppercase px-2.5 py-0.5 rounded-full"
+              style={{ ...cp(600, 10, '0.12em'), background: 'rgba(255,224,61,0.1)', color: '#FFE03D', border: '1px solid rgba(255,224,61,0.2)', animation: 'ambient-breathe 1.5s ease-in-out infinite' }}
+            >YOUR TURN</span>
+          )}
+          <button
+            onClick={handleLeave}
+            className="ml-auto h-8 px-4 uppercase transition-all"
+            style={{ ...cp(600, 10, '0.12em'), borderRadius: 6, color: '#FF4444', border: '1px solid rgba(255,68,68,0.25)', background: 'rgba(255,68,68,0.06)' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,68,68,0.12)'; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,68,68,0.06)'; }}
+          >
             LEAVE
           </button>
         </div>
@@ -1082,7 +1480,7 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
         </div>
 
         {/* Pot */}
-        <div className="font-clash text-xl px-6 py-2 rounded-full" style={{ background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(0,191,255,0.2)', color: '#00BFFF' }}>
+        <div className="px-6 py-2.5 rounded-full" style={{ ...cp(700, 20, '0.04em'), background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(0,191,255,0.2)', color: '#00BFFF' }}>
           POT: {pot}
         </div>
 
@@ -1131,7 +1529,7 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
           </div>
           {myHandName && (
             <div className="flex flex-col items-center gap-1.5">
-              <span className="font-satoshi font-bold text-sm" style={{ color: 'var(--color-primary)' }}>{myHandName}</span>
+              <span style={{ ...cp(600, 13, '0.04em'), color: '#FFE03D' }}>{myHandName}</span>
               {/* Hand strength bar */}
               {myCards.length >= 2 && communityCards.length >= 3 && (() => {
                 const ev = evaluate7([...myCards, ...communityCards]);
@@ -1224,50 +1622,48 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
         {isMyTurn && lobbyState === 'playing' && myCards.length >= 2 && !decryptingCommunity && (
           <div className="flex flex-wrap gap-2 justify-center">
             {hasBetToMatch ? (
-              /* Opponent has bet more → CALL / RAISE / ALL-IN / FOLD */
               <>
                 <button onClick={() => handleAct(4)} disabled={loading} title="Match opponent's bet to stay in"
-                  className="h-10 px-5 rounded-full font-mono text-xs font-bold tracking-widest uppercase disabled:opacity-50"
-                  style={{ background: 'var(--color-success)', color: '#000' }}>
+                  className="h-11 px-6 uppercase disabled:opacity-50 transition-all"
+                  style={{ ...cp(700, 12, '0.12em'), borderRadius: 10, background: '#00FF78', color: '#000', boxShadow: '0 0 20px rgba(0,255,120,0.25)' }}>
                   CALL ({oppRoundBet - myRoundBet})
                 </button>
                 <button onClick={() => handleAct(2)} disabled={loading} title="Match + increase the bet"
-                  className="h-10 px-5 rounded-full font-mono text-xs font-bold tracking-widest uppercase disabled:opacity-50"
-                  style={{ background: 'var(--color-primary)', color: '#000' }}>
+                  className="h-11 px-6 uppercase disabled:opacity-50 transition-all"
+                  style={{ ...cp(700, 12, '0.12em'), borderRadius: 10, background: '#FFE03D', color: '#000', boxShadow: '0 0 20px rgba(255,224,61,0.2)' }}>
                   RAISE
                 </button>
                 <button onClick={() => handleAct(5)} disabled={loading} title="Bet your entire remaining stack"
-                  className="h-10 px-5 rounded-full font-mono text-xs font-bold tracking-widest uppercase disabled:opacity-50"
-                  style={{ background: '#FF8C42', color: '#000' }}>
+                  className="h-11 px-6 uppercase disabled:opacity-50 transition-all"
+                  style={{ ...cp(700, 12, '0.12em'), borderRadius: 10, background: '#FF8C42', color: '#000' }}>
                   ALL-IN
                 </button>
                 <button onClick={handleFold} disabled={loading} title="Give up this hand — opponent wins the pot"
-                  className="h-10 px-5 rounded-full font-mono text-xs font-bold tracking-widest uppercase disabled:opacity-50"
-                  style={{ background: 'transparent', color: 'var(--color-danger)', border: '1.5px solid rgba(255,59,59,0.35)' }}>
+                  className="h-11 px-6 uppercase disabled:opacity-50 transition-all"
+                  style={{ ...cp(600, 12, '0.12em'), borderRadius: 10, background: 'rgba(255,68,68,0.08)', color: '#FF4444', border: '1.5px solid rgba(255,68,68,0.3)' }}>
                   FOLD
                 </button>
               </>
             ) : (
-              /* Bets equal → CHECK / BET / ALL-IN / FOLD */
               <>
                 <button onClick={() => handleAct(0)} disabled={loading} title="Pass without betting — free to see next card"
-                  className="h-10 px-5 rounded-full font-mono text-xs font-bold tracking-widest uppercase disabled:opacity-50"
-                  style={{ background: 'rgba(255,255,255,0.08)', color: '#fff', border: '1.5px solid rgba(255,255,255,0.15)' }}>
+                  className="h-11 px-6 uppercase disabled:opacity-50 transition-all"
+                  style={{ ...cp(600, 12, '0.12em'), borderRadius: 10, background: 'rgba(255,255,255,0.07)', color: '#fff', border: '1.5px solid rgba(255,255,255,0.14)' }}>
                   CHECK
                 </button>
                 <button onClick={() => handleAct(1)} disabled={loading} title="Place a bet — opponent must call, raise, or fold"
-                  className="h-10 px-5 rounded-full font-mono text-xs font-bold tracking-widest uppercase disabled:opacity-50"
-                  style={{ background: '#00BFFF', color: '#000' }}>
+                  className="h-11 px-6 uppercase disabled:opacity-50 transition-all"
+                  style={{ ...cp(700, 12, '0.12em'), borderRadius: 10, background: '#00BFFF', color: '#000', boxShadow: '0 0 20px rgba(0,191,255,0.25)' }}>
                   BET (10)
                 </button>
                 <button onClick={() => handleAct(5)} disabled={loading} title="Bet your entire remaining stack"
-                  className="h-10 px-5 rounded-full font-mono text-xs font-bold tracking-widest uppercase disabled:opacity-50"
-                  style={{ background: '#FF8C42', color: '#000' }}>
+                  className="h-11 px-6 uppercase disabled:opacity-50 transition-all"
+                  style={{ ...cp(700, 12, '0.12em'), borderRadius: 10, background: '#FF8C42', color: '#000' }}>
                   ALL-IN
                 </button>
                 <button onClick={handleFold} disabled={loading} title="Give up this hand — opponent wins the pot"
-                  className="h-10 px-5 rounded-full font-mono text-xs font-bold tracking-widest uppercase disabled:opacity-50"
-                  style={{ background: 'transparent', color: 'var(--color-danger)', border: '1.5px solid rgba(255,59,59,0.35)' }}>
+                  className="h-11 px-6 uppercase disabled:opacity-50 transition-all"
+                  style={{ ...cp(600, 12, '0.12em'), borderRadius: 10, background: 'rgba(255,68,68,0.08)', color: '#FF4444', border: '1.5px solid rgba(255,68,68,0.3)' }}>
                   FOLD
                 </button>
               </>
@@ -1278,8 +1674,8 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
         {/* Showdown trigger */}
         {lobbyState === 'showdown' && (
           <button onClick={handleShowdown} disabled={loading}
-            className="h-11 px-8 rounded-full font-mono text-sm font-bold tracking-widest uppercase disabled:opacity-50"
-            style={{ background: 'var(--color-fhe)', color: '#000' }}>
+            className="h-11 px-8 uppercase disabled:opacity-50 transition-all"
+            style={{ ...cp(700, 13, '0.14em'), borderRadius: 10, background: '#B366FF', color: '#000', boxShadow: '0 0 24px rgba(179,102,255,0.3)' }}>
             {loading ? 'COMPUTING...' : 'COMPUTE SHOWDOWN'}
           </button>
         )}
@@ -1357,15 +1753,15 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
 
         </div>
 
-        {/* ── Narrator Panel (right side) ── */}
+        {/* ── Narrator + Quick Info Panel (right side) ── */}
         <div className="hidden lg:flex flex-col w-[240px] shrink-0 gap-3 pt-12">
-          <div className="rounded-xl overflow-hidden"
-            style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
-            <div className="px-4 py-3 flex items-center gap-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-              <span className="text-sm">&#9824;</span>
-              <span className="font-mono text-[9px] tracking-widest uppercase font-bold" style={{ color: 'rgba(255,255,255,0.5)' }}>TABLE TALK</span>
+          {/* Table Talk */}
+          <div className="rounded-xl overflow-hidden" style={{ background: '#0F1318', border: '1px solid rgba(0,229,255,0.10)', borderRadius: 12 }}>
+            <div className="px-4 py-2.5 flex items-center gap-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+              <span style={{ fontSize: 12 }}>♠</span>
+              <span className="uppercase" style={{ ...cp(500, 9, '0.18em'), color: 'rgba(255,255,255,0.4)' }}>TABLE TALK</span>
             </div>
-            <div className="px-4 py-3 space-y-3 min-h-[120px]">
+            <div className="px-4 py-3 space-y-3 min-h-[100px]">
               <AnimatePresence mode="popLayout">
                 {narration.slice(-3).map((n) => (
                   <motion.p
@@ -1374,15 +1770,14 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: -10, scale: 0.95 }}
                     transition={{ duration: 0.4 }}
-                    className="font-satoshi text-[12px] leading-relaxed italic"
-                    style={{ color: 'rgba(255,255,255,0.45)' }}
+                    style={{ ...cp(400, 12), lineHeight: 1.6, fontStyle: 'italic', color: 'rgba(255,255,255,0.4)' }}
                   >
                     "{n.text}"
                   </motion.p>
                 ))}
               </AnimatePresence>
               {narration.length === 0 && (
-                <p className="font-satoshi text-[12px] italic" style={{ color: 'rgba(255,255,255,0.2)' }}>
+                <p style={{ ...cp(400, 12), fontStyle: 'italic', color: 'rgba(255,255,255,0.2)' }}>
                   "The table is set. Let the cards decide..."
                 </p>
               )}
@@ -1390,81 +1785,111 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
           </div>
 
           {/* Quick info */}
-          <div className="rounded-xl px-4 py-3 space-y-2"
-            style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
-            <div className="flex justify-between font-mono text-[10px]">
-              <span style={{ color: 'rgba(255,255,255,0.3)' }}>Pot</span>
-              <span style={{ color: '#00BFFF' }}>{pot}</span>
-            </div>
-            <div className="flex justify-between font-mono text-[10px]">
-              <span style={{ color: 'rgba(255,255,255,0.3)' }}>Round</span>
-              <span style={{ color: 'rgba(255,255,255,0.6)' }}>{roundName || '—'}</span>
-            </div>
-            <div className="flex justify-between font-mono text-[10px]">
-              <span style={{ color: 'rgba(255,255,255,0.3)' }}>Your bet</span>
-              <span style={{ color: 'rgba(255,255,255,0.6)' }}>{myRoundBet}</span>
-            </div>
-            <div className="flex justify-between font-mono text-[10px]">
-              <span style={{ color: 'rgba(255,255,255,0.3)' }}>Opp bet</span>
-              <span style={{ color: 'rgba(255,255,255,0.6)' }}>{oppRoundBet}</span>
-            </div>
-            <div className="flex justify-between font-mono text-[10px]">
-              <span style={{ color: 'rgba(255,255,255,0.3)' }}>Hand</span>
-              <span style={{ color: 'var(--color-primary)' }}>{myHandName || '—'}</span>
-            </div>
+          <div className="rounded-xl px-4 py-3 space-y-2.5" style={{ background: '#0F1318', border: '1px solid rgba(0,229,255,0.10)', borderRadius: 12 }}>
+            {[
+              { label: 'Pot',      val: pot,        color: '#00BFFF' },
+              { label: 'Round',    val: roundName || '—', color: 'rgba(255,255,255,0.6)' },
+              { label: 'Your bet', val: myRoundBet,  color: 'rgba(255,255,255,0.6)' },
+              { label: 'Opp bet',  val: oppRoundBet, color: 'rgba(255,255,255,0.6)' },
+              { label: 'Hand',     val: myHandName || '—', color: '#FFE03D' },
+            ].map(({ label, val, color }) => (
+              <div key={label} className="flex justify-between items-center" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', paddingBottom: 6 }}>
+                <span style={{ ...cp(400, 10, '0.05em'), color: 'rgba(255,255,255,0.35)' }}>{label}</span>
+                <span style={{ ...cp(600, 11, '0.03em'), color }}>{val}</span>
+              </div>
+            ))}
           </div>
         </div>
       </div>
     );
   }
 
-  return (
-    <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 px-4">
-      {handResult && (
-        <>
-          <h2 className="font-clash text-4xl" style={{
-            color: handResult.winner === '0x0000000000000000000000000000000000000000' ? '#888'
-              : handResult.winner.toLowerCase() === address?.toLowerCase() ? 'var(--color-primary)' : 'var(--color-danger)'
-          }}>
-            {handResult.winner === '0x0000000000000000000000000000000000000000' ? 'TIE'
-              : handResult.winner.toLowerCase() === address?.toLowerCase() ? 'YOU WIN!' : 'YOU LOST'}
-          </h2>
-          <p className="font-mono text-sm" style={{ color: 'var(--color-text-muted)' }}>Pot: {handResult.pot} chips</p>
-        </>
-      )}
+  // Result screen
+  const isWin = handResult?.winner?.toLowerCase() === address?.toLowerCase();
+  const isTie = handResult?.winner === '0x0000000000000000000000000000000000000000';
 
-      {/* Show cards side by side */}
-      <div className="flex gap-8 mt-4">
-        <div className="flex flex-col items-center gap-2">
-          <span className="font-mono text-xs" style={{ color: 'var(--color-text-muted)' }}>Your hand</span>
-          <div className="flex gap-1">{myCards.map((id, i) => <Card key={i} id={id} state="faceUp" />)}</div>
-        </div>
-        {oppCards.length > 0 && (
-          <div className="flex flex-col items-center gap-2">
-            <span className="font-mono text-xs" style={{ color: 'var(--color-text-muted)' }}>Opponent</span>
-            <div className="flex gap-1">{oppCards.map((id, i) => <Card key={i} id={id} state="faceUp" />)}</div>
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[calc(100vh-160px)] py-12 px-4" style={{ background: '#0A0D12' }}>
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ type: 'spring', damping: 22 }}
+        className="flex flex-col items-center gap-6 w-full max-w-[680px]"
+      >
+        {handResult && (
+          <div className="text-center">
+            <h2
+              className="uppercase"
+              style={{
+                ...cp(700, 'clamp(48px,8vw,72px)', '0.06em'),
+                color: isTie ? 'rgba(255,255,255,0.4)' : isWin ? '#FFE03D' : '#FF4444',
+                textShadow: isWin ? '0 0 40px rgba(255,224,61,0.4)' : 'none',
+                animation: isWin ? 'counter-glow 2s ease-in-out infinite' : 'none',
+              }}
+            >
+              {isTie ? 'TIE' : isWin ? 'YOU WIN!' : 'YOU LOST'}
+            </h2>
+            <p className="mt-1" style={{ ...cp(400, 13), color: 'rgba(255,255,255,0.4)' }}>
+              Pot: <span style={{ color: 'white', fontWeight: 600 }}>{handResult.pot}</span> chips
+            </p>
           </div>
         )}
-      </div>
 
-      {communityCards.length > 0 && (
-        <div className="flex flex-col items-center gap-2 mt-2">
-          <span className="font-mono text-xs" style={{ color: '#00BFFF' }}>Community</span>
-          <div className="flex gap-1">{communityCards.map((id, i) => <Card key={i} id={id} state="faceUp" />)}</div>
+        {/* Cards */}
+        <div className="flex flex-col items-center gap-5 w-full">
+          {/* My + opp hands */}
+          <div className="flex flex-wrap gap-8 justify-center">
+            <div className="flex flex-col items-center gap-2">
+              <span className="uppercase" style={{ ...cp(500, 10, '0.14em'), color: 'rgba(255,255,255,0.4)' }}>Your Hand</span>
+              <div className="flex gap-1">{myCards.map((id, i) => <Card key={i} id={id} state={isWin ? 'winner' : 'faceUp'} />)}</div>
+            </div>
+            {oppCards.length > 0 && (
+              <div className="flex flex-col items-center gap-2">
+                <span className="uppercase" style={{ ...cp(500, 10, '0.14em'), color: 'rgba(255,255,255,0.4)' }}>Opponent</span>
+                <div className="flex gap-1">{oppCards.map((id, i) => <Card key={i} id={id} state={!isWin && !isTie ? 'winner' : 'faceUp'} />)}</div>
+              </div>
+            )}
+          </div>
+          {communityCards.length > 0 && (
+            <div className="flex flex-col items-center gap-2">
+              <span className="uppercase" style={{ ...cp(500, 10, '0.14em'), color: '#00BFFF' }}>Community</span>
+              <div className="flex gap-1">{communityCards.map((id, i) => <Card key={i} id={id} state="faceUp" />)}</div>
+            </div>
+          )}
         </div>
-      )}
 
-      <div className="flex gap-3 mt-6">
-        <button onClick={handleStartHand} disabled={loading}
-          className="h-11 px-8 rounded-full font-mono text-sm font-bold uppercase disabled:opacity-50"
-          style={{ background: '#00BFFF', color: '#000' }}>
-          NEXT HAND
-        </button>
-        <button onClick={handleLeave} className="h-11 px-6 rounded-full font-mono text-sm tracking-wider uppercase"
-          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.5)' }}>
-          LEAVE TABLE
-        </button>
-      </div>
+        {/* Action buttons */}
+        <div className="flex gap-3">
+          <button
+            onClick={handleStartHand}
+            disabled={loading}
+            className="h-12 px-10 uppercase transition-all disabled:opacity-50"
+            style={{
+              ...cp(700, 13, '0.14em'),
+              borderRadius: 10,
+              background: '#00BFFF',
+              color: '#000',
+              boxShadow: '0 0 24px rgba(0,191,255,0.35)',
+            }}
+          >
+            {loading ? 'STARTING...' : 'NEXT HAND'}
+          </button>
+          <button
+            onClick={handleLeave}
+            className="h-12 px-8 uppercase transition-all"
+            style={{
+              ...cp(500, 12, '0.1em'),
+              borderRadius: 10,
+              background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              color: 'rgba(255,255,255,0.5)',
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.08)'; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.04)'; }}
+          >
+            LEAVE TABLE
+          </button>
+        </div>
+      </motion.div>
     </div>
   );
 };

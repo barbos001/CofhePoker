@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAccount, useDisconnect } from 'wagmi';
 import { useGameStore } from '@/store/useGameStore';
@@ -6,14 +6,15 @@ import { CONTRACT_ADDRESS } from '@/config/contract';
 import { useCofhe } from '@/hooks/useCofhe';
 import { useVaultStore } from '@/store/useVaultStore';
 import { VAULT_DEPLOYED } from '@/config/vault';
+import { Key, Wallet, CreditCard, Zap, Gamepad2, Volume2, Shield, BarChart2, FileCode, Info } from 'lucide-react';
 
 const ETHERSCAN = 'https://sepolia.etherscan.io';
 
 const Toggle = ({ on, onToggle, label, desc }: { on: boolean; onToggle: () => void; label: string; desc?: string }) => (
   <button onClick={onToggle} className="flex items-center justify-between w-full py-4 group text-left">
     <div className="flex flex-col gap-1 pr-4">
-      <span className="font-satoshi text-[15px] font-medium text-white">{label}</span>
-      {desc && <span className="font-satoshi text-[12px] leading-snug" style={{ color: 'rgba(255,255,255,0.45)' }}>{desc}</span>}
+      <span style={{ fontFamily: "'Chakra Petch', sans-serif", fontWeight: 600, fontSize: 14, letterSpacing: '0.03em', color: 'white' }}>{label}</span>
+      {desc && <span style={{ fontFamily: "'Chakra Petch', sans-serif", fontWeight: 400, fontSize: 12, letterSpacing: '0.03em', color: 'rgba(255,255,255,0.4)', lineHeight: 1.4 }}>{desc}</span>}
     </div>
     <div
       className="w-11 h-6 rounded-full relative transition-colors shrink-0"
@@ -44,14 +45,18 @@ const Select = ({
 }) => (
   <div className="flex items-center justify-between py-4">
     <div className="flex flex-col gap-1 pr-4">
-      <span className="font-satoshi text-[15px] font-medium text-white">{label}</span>
-      {desc && <span className="font-satoshi text-[12px] leading-snug" style={{ color: 'rgba(255,255,255,0.45)' }}>{desc}</span>}
+      <span style={{ fontFamily: "'Chakra Petch', sans-serif", fontWeight: 400, fontSize: 14, letterSpacing: '0.03em', color: 'white' }}>{label}</span>
+      {desc && <span style={{ fontFamily: "'Chakra Petch', sans-serif", fontWeight: 400, fontSize: 12, letterSpacing: '0.03em', color: 'rgba(255,255,255,0.45)', lineHeight: 1.4 }}>{desc}</span>}
     </div>
     <select
       value={value}
       onChange={e => onChange(e.target.value)}
-      className="font-mono text-[13px] tracking-wider px-3.5 py-2 rounded-lg appearance-none cursor-pointer transition-colors outline-none"
+      className="px-3.5 py-2 rounded-lg appearance-none cursor-pointer transition-colors outline-none"
       style={{
+        fontFamily: "'Chakra Petch', sans-serif",
+        fontWeight: 500,
+        fontSize: 13,
+        letterSpacing: '0.05em',
         background: 'rgba(255,255,255,0.08)',
         border: '1px solid rgba(255,255,255,0.12)',
         color: 'white',
@@ -67,11 +72,25 @@ const Select = ({
 );
 
 const Row = ({ label, value, mono, color }: { label: string; value: string; mono?: boolean; color?: string }) => (
-  <div className="flex items-center justify-between py-4">
-    <span className="font-satoshi text-[15px]" style={{ color: 'rgba(255,255,255,0.6)' }}>{label}</span>
+  <div className="flex items-center justify-between" style={{ padding: '16px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
     <span
-      className={`text-[15px] text-right max-w-[60%] truncate ${mono ? 'font-mono' : 'font-satoshi font-medium'}`}
-      style={{ color: color || 'white' }}
+      style={{
+        fontFamily: "'Chakra Petch', sans-serif",
+        fontWeight: 400,
+        fontSize: 13,
+        letterSpacing: '0.03em',
+        color: 'rgba(255,255,255,0.4)',
+      }}
+    >{label}</span>
+    <span
+      className="text-right max-w-[60%] truncate"
+      style={{
+        fontFamily: "'Chakra Petch', sans-serif",
+        fontWeight: 600,
+        fontSize: 14,
+        letterSpacing: mono ? '0.05em' : '0.03em',
+        color: color || 'rgba(255,255,255,0.95)',
+      }}
     >
       {value}
     </span>
@@ -93,20 +112,28 @@ const ActionRow = ({
   onClick: () => void;
   disabled?: boolean;
 }) => (
-  <div className="flex items-center justify-between py-4">
-    <div className="flex flex-col gap-1 pr-4">
-      <span className="font-satoshi text-[15px] font-medium text-white">{label}</span>
-      {desc && <span className="font-satoshi text-[12px] leading-snug" style={{ color: 'rgba(255,255,255,0.45)' }}>{desc}</span>}
+  <div className="flex items-center justify-between" style={{ padding: '16px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+    <div className="flex flex-col gap-0.5 pr-4">
+      <span style={{ fontFamily: "'Chakra Petch', sans-serif", fontWeight: 600, fontSize: 14, letterSpacing: '0.03em', color: 'white' }}>{label}</span>
+      {desc && <span style={{ fontFamily: "'Chakra Petch', sans-serif", fontWeight: 400, fontSize: 12, letterSpacing: '0.02em', color: 'rgba(255,255,255,0.4)', lineHeight: 1.4 }}>{desc}</span>}
     </div>
     <button
       onClick={onClick}
       disabled={disabled}
-      className="font-mono text-[11px] tracking-widest uppercase px-4 py-2 rounded-full transition-all hover:brightness-125 shrink-0 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:brightness-100"
+      className="uppercase shrink-0 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
       style={{
+        fontFamily: "'Chakra Petch', sans-serif",
+        fontWeight: 600,
+        fontSize: 12,
+        letterSpacing: '0.1em',
         color: btnColor,
-        border: `1px solid ${btnColor}50`,
-        background: `${btnColor}15`,
+        border: `1px solid ${btnColor}`,
+        borderRadius: 6,
+        padding: '4px 14px',
+        background: `color-mix(in srgb, ${btnColor} 7%, transparent)`,
       }}
+      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = `color-mix(in srgb, ${btnColor} 15%, transparent)`; }}
+      onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = `color-mix(in srgb, ${btnColor} 7%, transparent)`; }}
     >
       {btnLabel}
     </button>
@@ -114,19 +141,22 @@ const ActionRow = ({
 );
 
 const StatusBadge = ({ active, label }: { active: boolean; label: string }) => (
-  <div className="flex items-center gap-1.5">
-    <span
-      className="w-1.5 h-1.5 rounded-full"
-      style={{
-        background: active ? 'var(--color-success)' : 'var(--color-text-muted)',
-        boxShadow: active ? '0 0 6px rgba(0,232,108,0.5)' : 'none',
-        animation: active ? 'ambient-breathe 2s ease-in-out infinite' : 'none',
-      }}
-    />
-    <span className="font-mono text-[10px] tracking-wider uppercase" style={{ color: active ? 'var(--color-success)' : 'var(--color-text-muted)' }}>
-      {label}
-    </span>
-  </div>
+  <span
+    className="uppercase"
+    style={{
+      fontFamily: "'Chakra Petch', sans-serif",
+      fontWeight: 600,
+      fontSize: 11,
+      letterSpacing: '0.08em',
+      borderRadius: 999,
+      padding: '2px 10px',
+      background: active ? 'rgba(0,255,120,0.10)' : 'rgba(255,60,60,0.12)',
+      color: active ? '#00FF78' : '#FF4444',
+      border: active ? '1px solid rgba(0,255,120,0.25)' : '1px solid rgba(255,60,60,0.25)',
+    }}
+  >
+    {label}
+  </span>
 );
 
 const Section = ({
@@ -158,33 +188,44 @@ const Section = ({
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay, duration: 0.4 }}
-      className="rounded-2xl mb-5 overflow-hidden relative scroll-mt-24"
+      className="mb-4 overflow-hidden scroll-mt-24"
       style={{
-        background: 'rgba(255,255,255,0.055)',
-        border: '1px solid rgba(255,255,255,0.13)',
+        background: '#0F1318',
+        border: '1px solid rgba(0,229,255,0.12)',
+        borderRadius: 12,
+        boxShadow: '0 0 32px rgba(0,229,255,0.03)',
       }}
     >
-      {/* Accent top line */}
-      {accentColor && (
-        <div className="absolute top-0 left-6 right-6 h-[1px]" style={{ background: `linear-gradient(90deg, transparent, ${accentColor}50, transparent)` }} />
-      )}
-
+      {/* Card header */}
       <button
         onClick={collapsible ? () => setOpen(!open) : undefined}
-        className={`w-full flex items-center justify-between p-5 pb-3 ${collapsible ? 'cursor-pointer' : 'cursor-default'}`}
+        className={`w-full flex items-center justify-between px-5 py-4 ${collapsible ? 'cursor-pointer' : 'cursor-default'}`}
       >
         <div className="flex items-center gap-3">
+          {/* Icon container */}
           <span
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-sm"
+            className="flex items-center justify-center shrink-0"
             style={{
-              background: accentColor ? `${accentColor}18` : 'rgba(255,255,255,0.06)',
-              border: `1px solid ${accentColor ? `${accentColor}35` : 'rgba(255,255,255,0.1)'}`,
+              background: 'rgba(255,165,0,0.12)',
+              borderRadius: 8,
+              padding: 8,
+              fontSize: 14,
+              lineHeight: 1,
               color: accentColor || 'rgba(255,255,255,0.7)',
             }}
           >
             {icon}
           </span>
-          <h3 className="font-mono text-[13px] tracking-widest uppercase font-bold" style={{ color: 'rgba(255,255,255,0.75)' }}>
+          <h3
+            className="uppercase"
+            style={{
+              fontFamily: "'Chakra Petch', sans-serif",
+              fontWeight: 700,
+              fontSize: 16,
+              letterSpacing: '0.08em',
+              color: 'rgba(255,255,255,0.95)',
+            }}
+          >
             {title}
           </h3>
           {badge}
@@ -193,13 +234,15 @@ const Section = ({
           <motion.span
             animate={{ rotate: open ? 180 : 0 }}
             transition={{ duration: 0.2 }}
-            className="text-xs"
-            style={{ color: 'var(--color-text-muted)' }}
+            style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12 }}
           >
             ▾
           </motion.span>
         )}
       </button>
+
+      {/* Divider under header */}
+      <div style={{ height: 1, background: 'rgba(255,255,255,0.05)', margin: '0 20px' }} />
 
       <AnimatePresence initial={false}>
         {open && (
@@ -210,10 +253,12 @@ const Section = ({
             transition={{ duration: 0.25 }}
             className="overflow-hidden"
           >
-            <div className="px-5 pb-5">
-              <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
-                {children}
-              </div>
+            {/* Remove border from last child row via CSS */}
+            <div
+              className="px-5 pb-1 last-row-no-border"
+              style={{ paddingTop: 4 }}
+            >
+              {children}
             </div>
           </motion.div>
         )}
@@ -223,26 +268,46 @@ const Section = ({
 };
 
 const SIDEBAR_SECTIONS = [
-  { id: 'permits',  icon: '🔑', label: 'FHE Permits' },
-  { id: 'wallet',   icon: '◈',  label: 'Wallet' },
-  { id: 'cards',    icon: '👁',  label: 'My Cards' },
-  { id: 'gas',      icon: '⛽',  label: 'Gas & Tx' },
-  { id: 'gameplay', icon: '♠',  label: 'Gameplay' },
-  { id: 'sound',    icon: '🔊', label: 'Sound' },
-  { id: 'security', icon: '🔐', label: 'Security' },
-  { id: 'stats',    icon: '◆',  label: 'Statistics' },
-  { id: 'contract', icon: '⛓',  label: 'Contract' },
-  { id: 'about',    icon: '♠',  label: 'About' },
-] as const;
+  { id: 'permits',  Icon: Key,        label: 'FHE Permits' },
+  { id: 'wallet',   Icon: Wallet,     label: 'Wallet' },
+  { id: 'cards',    Icon: CreditCard, label: 'My Cards' },
+  { id: 'gas',      Icon: Zap,        label: 'Gas & Tx' },
+  { id: 'gameplay', Icon: Gamepad2,   label: 'Gameplay' },
+  { id: 'sound',    Icon: Volume2,    label: 'Sound' },
+  { id: 'security', Icon: Shield,     label: 'Security' },
+  { id: 'stats',    Icon: BarChart2,  label: 'Statistics' },
+  { id: 'contract', Icon: FileCode,   label: 'Contract' },
+  { id: 'about',    Icon: Info,       label: 'About' },
+];
+
+/** Format a past timestamp as "Xs ago", "Xm ago", "Xh ago", or "Never" */
+function toAgo(ts: number | null): string {
+  if (!ts) return 'Never';
+  const diff = Math.max(0, Date.now() - ts);
+  const sec  = Math.floor(diff / 1000);
+  const min  = Math.floor(sec  / 60);
+  const hr   = Math.floor(min  / 60);
+  if (hr  >= 1)  return `${hr}h ago`;
+  if (min >= 1)  return `${min}m ago`;
+  return `${sec}s ago`;
+}
 
 export const SettingsTab = () => {
-  const { balance, history, setAppState, permitStatus, permitError, setPermitStatus, setPermitError } = useGameStore();
+  const { balance, history, setAppState, permitStatus, permitError, setPermitStatus, setPermitError,
+          sessionStartedAt, lastDecryptAt } = useGameStore();
   const { address, isConnected, chainId } = useAccount();
   const { disconnect } = useDisconnect();
   const { ensurePermit, removeActivePermit, isReady: cofheReady } = useCofhe();
   const { setWalletPanelOpen } = useVaultStore();
   const [activeSection, setActiveSection] = useState<string>('permits');
   const deployed = CONTRACT_ADDRESS !== '0x0000000000000000000000000000000000000000';
+
+  // Tick every 30s to keep "X ago" labels fresh
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
 
   const scrollToSection = (id: string) => {
     setActiveSection(id);
@@ -317,6 +382,32 @@ export const SettingsTab = () => {
   const setTableSkin = persistStr('poker_tableSkin', _setTableSkin);
   const setAutoLogout = persistStr('poker_autoLogout', _setAutoLogout);
 
+  // Auto-logout on inactivity
+  const lastActivityRef = useRef(Date.now());
+  useEffect(() => {
+    const onActivity = () => { lastActivityRef.current = Date.now(); };
+    window.addEventListener('mousemove', onActivity, { passive: true });
+    window.addEventListener('keydown',   onActivity, { passive: true });
+    window.addEventListener('touchstart',onActivity, { passive: true });
+    return () => {
+      window.removeEventListener('mousemove',   onActivity);
+      window.removeEventListener('keydown',     onActivity);
+      window.removeEventListener('touchstart',  onActivity);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (autoLogout === 'never' || !isConnected) return;
+    const mins = parseInt(autoLogout, 10);
+    const id = setInterval(() => {
+      if (Date.now() - lastActivityRef.current > mins * 60_000) {
+        disconnect();
+        setAppState('landing');
+      }
+    }, 60_000); // check every minute
+    return () => clearInterval(id);
+  }, [autoLogout, isConnected, disconnect, setAppState]);
+
   // Stats
   const wins = history.filter(h => h.result === 'WON').length;
   const losses = history.filter(h => h.result === 'LOST').length;
@@ -328,28 +419,89 @@ export const SettingsTab = () => {
   const copyContract = () => { navigator.clipboard.writeText(CONTRACT_ADDRESS); };
 
   return (
-    <div className="w-full min-h-[calc(100vh-112px)] flex justify-center">
+    <div className="w-full min-h-[calc(100vh-112px)] flex justify-center" style={{ background: '#0A0D12' }}>
       {/* ── Left Sidebar ── */}
-      <div className="hidden lg:block w-[190px] shrink-0 border-r" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
-        <div className="sticky top-[80px] pt-10 pb-6 pr-4 pl-6 flex flex-col gap-0.5">
-          <span className="font-mono text-[9px] tracking-widest uppercase mb-3" style={{ color: 'rgba(255,255,255,0.2)' }}>
+      <div
+        className="hidden lg:block w-[210px] shrink-0"
+        style={{ background: '#0A0D12', borderRight: '1px solid rgba(255,255,255,0.06)' }}
+      >
+        <div className="sticky top-[80px] pt-10 pb-6 flex flex-col px-2">
+          {/* "SECTIONS" label */}
+          <span
+            className="uppercase block"
+            style={{
+              fontFamily: "'Chakra Petch', sans-serif",
+              fontWeight: 400,
+              fontSize: 10,
+              letterSpacing: '0.2em',
+              color: 'rgba(255,255,255,0.25)',
+              padding: '0 16px',
+              marginBottom: 4,
+            }}
+          >
             Sections
           </span>
-          {SIDEBAR_SECTIONS.map(s => (
-            <button
-              key={s.id}
-              onClick={() => scrollToSection(s.id)}
-              className="flex items-center gap-2.5 h-9 px-3 rounded-xl text-left transition-all w-full"
-              style={{
-                background: activeSection === s.id ? 'rgba(255,255,255,0.06)' : 'transparent',
-                color: activeSection === s.id ? 'white' : 'rgba(255,255,255,0.55)',
-                borderLeft: activeSection === s.id ? '2px solid var(--color-primary)' : '2px solid transparent',
-              }}
-            >
-              <span className="text-xs w-4 text-center shrink-0">{s.icon}</span>
-              <span className="font-mono text-[11px] tracking-wider truncate">{s.label}</span>
-            </button>
-          ))}
+
+          {/* Nav items */}
+          {SIDEBAR_SECTIONS.map(s => {
+            const isActive = activeSection === s.id;
+            const iconColor = isActive ? '#00E5FF' : 'rgba(255,255,255,0.4)';
+            return (
+              <button
+                key={s.id}
+                onClick={() => scrollToSection(s.id)}
+                className="w-full text-left transition-colors"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  height: 40,
+                  gap: 10,
+                  paddingLeft: isActive ? 13 : 16,
+                  paddingRight: 12,
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  borderLeft: isActive ? '3px solid #00E5FF' : '3px solid transparent',
+                  background: isActive ? 'rgba(0,229,255,0.07)' : 'transparent',
+                  color: isActive ? '#00E5FF' : 'rgba(255,255,255,0.45)',
+                }}
+                onMouseEnter={e => {
+                  const el = e.currentTarget as HTMLButtonElement;
+                  if (!isActive) {
+                    el.style.background = 'rgba(255,255,255,0.04)';
+                    el.style.color = 'rgba(255,255,255,0.75)';
+                    const svg = el.querySelector('svg') as SVGElement | null;
+                    if (svg) svg.style.color = 'rgba(255,255,255,0.7)';
+                  }
+                }}
+                onMouseLeave={e => {
+                  const el = e.currentTarget as HTMLButtonElement;
+                  if (!isActive) {
+                    el.style.background = 'transparent';
+                    el.style.color = 'rgba(255,255,255,0.45)';
+                    const svg = el.querySelector('svg') as SVGElement | null;
+                    if (svg) svg.style.color = 'rgba(255,255,255,0.4)';
+                  }
+                }}
+              >
+                <s.Icon
+                  size={15}
+                  strokeWidth={1.5}
+                  style={{ color: iconColor, flexShrink: 0, transition: 'color 0.15s' }}
+                />
+                <span
+                  className="uppercase truncate"
+                  style={{
+                    fontFamily: "'Chakra Petch', sans-serif",
+                    fontWeight: 600,
+                    fontSize: 13,
+                    letterSpacing: '0.1em',
+                  }}
+                >
+                  {s.label}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -358,12 +510,31 @@ export const SettingsTab = () => {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex items-end gap-4 mb-10"
+        className="flex items-center gap-4 mb-8"
       >
-        <h1 className="font-clash text-[48px] uppercase tracking-tight leading-none">
+        <h1
+          className="uppercase leading-none"
+          style={{
+            fontFamily: "'Chakra Petch', sans-serif",
+            fontWeight: 700,
+            fontSize: 52,
+            letterSpacing: '0.06em',
+            color: 'white',
+          }}
+        >
           SETTINGS
         </h1>
-        <span className="font-mono text-[10px] tracking-widest uppercase mb-2" style={{ color: 'var(--color-text-muted)' }}>
+        <span
+          style={{
+            fontFamily: "'Chakra Petch', sans-serif",
+            fontWeight: 400,
+            fontSize: 12,
+            color: 'rgba(255,255,255,0.5)',
+            background: 'rgba(255,255,255,0.06)',
+            borderRadius: 6,
+            padding: '3px 10px',
+          }}
+        >
           v1.0.0
         </span>
       </motion.div>
@@ -409,16 +580,17 @@ export const SettingsTab = () => {
           }
         />
         {permitNeedsAction && (
-          <div className="py-3">
+          <div style={{ padding: '12px 0' }}>
             <div
-              className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg"
+              className="flex items-center gap-2.5 px-3 py-2.5"
               style={{
-                background: 'rgba(255,59,59,0.05)',
-                border: '1px solid rgba(255,59,59,0.15)',
+                background: 'rgba(255,149,0,0.07)',
+                borderLeft: '3px solid #FF9500',
+                borderRadius: '0 6px 6px 0',
               }}
             >
-              <span className="text-sm">⚠</span>
-              <span className="font-satoshi text-[12px]" style={{ color: 'var(--color-text-secondary)' }}>
+              <span style={{ color: '#FF9500', fontSize: 14, lineHeight: 1 }}>⚠</span>
+              <span style={{ fontFamily: "'Chakra Petch', sans-serif", fontWeight: 400, fontSize: 13, letterSpacing: '0.02em', color: 'rgba(255,255,255,0.7)', lineHeight: 1.4 }}>
                 Without an active permit you cannot decrypt your cards.
               </span>
             </div>
@@ -430,7 +602,7 @@ export const SettingsTab = () => {
           label="Sign New Permit"
           desc={!isConnected ? 'Connect wallet first' : !cofheReady ? 'Waiting for CoFHE to initialize...' : 'Opens your wallet to sign an EIP-712 permit'}
           btnLabel={permitStatus === 'signing' ? 'SIGNING...' : !isConnected ? 'NO WALLET' : !cofheReady ? 'LOADING...' : 'SIGN'}
-          btnColor="var(--color-fhe)"
+          btnColor="#00E5FF"
           onClick={handleSignPermit}
           disabled={!isConnected || !cofheReady || permitStatus === 'signing'}
         />
@@ -438,7 +610,7 @@ export const SettingsTab = () => {
           label="Revoke Permit"
           desc="Immediately revoke current permit"
           btnLabel="REVOKE"
-          btnColor="var(--color-danger)"
+          btnColor="#FF4444"
           onClick={() => {
             setPermitStatus('none');
             setPermitError(null);
@@ -463,15 +635,16 @@ export const SettingsTab = () => {
           color={isConnected ? 'var(--color-success)' : 'var(--color-text-muted)'}
         />
         {isConnected && address && (
-          <div className="flex items-center justify-between py-3.5">
-            <span className="font-satoshi text-sm" style={{ color: 'var(--color-text-secondary)' }}>Address</span>
+          <div className="flex items-center justify-between" style={{ padding: '16px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+            <span style={{ fontFamily: "'Chakra Petch', sans-serif", fontWeight: 400, fontSize: 13, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.03em' }}>Address</span>
             <button
               onClick={copyAddress}
-              className="font-mono text-xs transition-colors hover:text-primary flex items-center gap-1.5"
+              className="flex items-center gap-1.5 transition-opacity hover:opacity-75"
               title="Copy address"
+              style={{ fontFamily: "'Chakra Petch', sans-serif", fontWeight: 600, fontSize: 13, letterSpacing: '0.05em', color: 'rgba(255,255,255,0.95)' }}
             >
               {address.slice(0, 6)}...{address.slice(-4)}
-              <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>⧉</span>
+              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>⧉</span>
             </button>
           </div>
         )}
@@ -496,13 +669,13 @@ export const SettingsTab = () => {
           disabled={!isConnected}
         />
         {isConnected && (
-          <div className="pt-3">
+          <div style={{ padding: '12px 0' }}>
             <a
               href={address ? `${ETHERSCAN}/address/${address}` : '#'}
               target="_blank"
               rel="noreferrer"
-              className="font-mono text-xs tracking-wider transition-colors hover:text-white"
-              style={{ color: 'var(--color-info)' }}
+              className="transition-opacity hover:opacity-75"
+              style={{ fontFamily: "'Chakra Petch', sans-serif", fontWeight: 500, fontSize: 12, letterSpacing: '0.06em', color: '#00E5FF' }}
             >
               View on Etherscan ↗
             </a>
@@ -533,7 +706,7 @@ export const SettingsTab = () => {
           desc="Blur cards unless you hold the mouse/tap"
         />
         <Row label="Decrypt Method" value="Threshold Network" mono />
-        <Row label="Last Decrypt" value="~5s ago" color="var(--color-text-muted)" />
+        <Row label="Last Decrypt" value={toAgo(lastDecryptAt)} color="var(--color-text-muted)" />
       </Section>
 
       {/* ═══════════════════════════════════════════════════════════════════
@@ -677,12 +850,12 @@ export const SettingsTab = () => {
           ]}
           onChange={setAutoLogout}
         />
-        <Row label="Session Started" value="12 min ago" color="var(--color-text-muted)" />
+        <Row label="Session Started" value={toAgo(sessionStartedAt)} color="var(--color-text-muted)" />
         <ActionRow
           label="Revoke All Access"
           desc="Remove all contract permissions"
           btnLabel="REVOKE ALL"
-          btnColor="var(--color-danger)"
+          btnColor="#FF4444"
           onClick={async () => {
             try { await removeActivePermit(); } catch {}
             setPermitStatus('none');
@@ -704,17 +877,17 @@ export const SettingsTab = () => {
         {/* Mini stat cards */}
         <div className="grid grid-cols-3 gap-3 py-4">
           {[
-            { label: 'WINS', value: String(wins), color: 'var(--color-success)' },
-            { label: 'LOSSES', value: String(losses), color: 'var(--color-danger)' },
-            { label: 'FOLDS', value: String(folds), color: 'var(--color-text-muted)' },
+            { label: 'WINS', value: String(wins), color: '#00FF78' },
+            { label: 'LOSSES', value: String(losses), color: '#FF4444' },
+            { label: 'FOLDS', value: String(folds), color: 'rgba(255,255,255,0.35)' },
           ].map(s => (
             <div
               key={s.label}
-              className="rounded-xl p-3 text-center"
-              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}
+              className="p-3 text-center"
+              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 8 }}
             >
-              <div className="font-clash text-2xl mb-0.5" style={{ color: s.color }}>{s.value}</div>
-              <div className="font-mono text-[9px] tracking-widest" style={{ color: 'var(--color-text-muted)' }}>{s.label}</div>
+              <div style={{ fontFamily: "'Chakra Petch', sans-serif", fontWeight: 700, fontSize: 26, color: s.color, lineHeight: 1.1 }}>{s.value}</div>
+              <div style={{ fontFamily: "'Chakra Petch', sans-serif", fontWeight: 600, fontSize: 9, letterSpacing: '0.15em', color: 'rgba(255,255,255,0.3)', marginTop: 4 }}>{s.label}</div>
             </div>
           ))}
         </div>
@@ -749,27 +922,28 @@ export const SettingsTab = () => {
         />
         {deployed && (
           <>
-            <div className="flex items-center justify-between py-3.5">
-              <span className="font-satoshi text-sm" style={{ color: 'var(--color-text-secondary)' }}>Address</span>
+            <div className="flex items-center justify-between" style={{ padding: '16px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+              <span style={{ fontFamily: "'Chakra Petch', sans-serif", fontWeight: 400, fontSize: 13, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.03em' }}>Address</span>
               <button
                 onClick={copyContract}
-                className="font-mono text-xs transition-colors hover:text-primary flex items-center gap-1.5"
+                className="flex items-center gap-1.5 transition-opacity hover:opacity-75"
                 title="Copy contract address"
+                style={{ fontFamily: "'Chakra Petch', sans-serif", fontWeight: 600, fontSize: 13, letterSpacing: '0.05em', color: 'rgba(255,255,255,0.95)' }}
               >
                 {CONTRACT_ADDRESS.slice(0, 6)}...{CONTRACT_ADDRESS.slice(-4)}
-                <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>⧉</span>
+                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>⧉</span>
               </button>
             </div>
             <Row label="Ante" value="10 chips" mono />
             <Row label="Starting Balance" value="1,000 chips" mono />
             <Row label="Engine" value="Fhenix CoFHE" mono />
-            <div className="pt-3">
+            <div style={{ padding: '12px 0' }}>
               <a
                 href={`${ETHERSCAN}/address/${CONTRACT_ADDRESS}`}
                 target="_blank"
                 rel="noreferrer"
-                className="font-mono text-xs tracking-wider transition-colors hover:text-white"
-                style={{ color: 'var(--color-info)' }}
+                className="transition-opacity hover:opacity-75"
+                style={{ fontFamily: "'Chakra Petch', sans-serif", fontWeight: 500, fontSize: 12, letterSpacing: '0.06em', color: '#00E5FF' }}
               >
                 View Contract ↗
               </a>
@@ -804,10 +978,16 @@ export const SettingsTab = () => {
               href={link.href}
               target="_blank"
               rel="noreferrer"
-              className="font-mono text-[10px] tracking-widest px-3 py-1.5 rounded-full transition-colors hover:text-white"
+              className="transition-opacity hover:opacity-75"
               style={{
-                color: 'var(--color-info)',
-                border: '1px solid rgba(77,124,255,0.2)',
+                fontFamily: "'Chakra Petch', sans-serif",
+                fontWeight: 500,
+                fontSize: 11,
+                letterSpacing: '0.08em',
+                color: '#00E5FF',
+                border: '1px solid rgba(0,229,255,0.2)',
+                borderRadius: 6,
+                padding: '4px 12px',
               }}
             >
               {link.label} ↗
@@ -828,26 +1008,38 @@ export const SettingsTab = () => {
         {isConnected && (
           <button
             onClick={() => disconnect()}
-            className="w-full h-12 rounded-full font-mono text-xs tracking-widest uppercase transition-all group relative overflow-hidden"
+            className="w-full h-11 uppercase transition-colors"
             style={{
-              color: 'var(--color-danger)',
-              border: '1px solid rgba(255,59,59,0.40)',
+              fontFamily: "'Chakra Petch', sans-serif",
+              fontWeight: 600,
+              fontSize: 12,
+              letterSpacing: '0.12em',
+              color: '#FF4444',
+              border: '1px solid rgba(255,68,68,0.3)',
+              borderRadius: 8,
+              background: 'transparent',
             }}
-            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,59,59,0.06)')}
-            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,68,68,0.07)'; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
           >
             DISCONNECT WALLET
           </button>
         )}
         <button
           onClick={() => setAppState('landing')}
-          className="w-full h-12 rounded-full font-mono text-xs tracking-widest uppercase transition-all"
+          className="w-full h-11 uppercase transition-colors"
           style={{
-            color: 'var(--color-text-muted)',
-            border: '1px solid rgba(255,255,255,0.12)',
+            fontFamily: "'Chakra Petch', sans-serif",
+            fontWeight: 600,
+            fontSize: 12,
+            letterSpacing: '0.12em',
+            color: 'rgba(255,255,255,0.4)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: 8,
+            background: 'transparent',
           }}
-          onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.03)')}
-          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.04)'; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
         >
           BACK TO LANDING PAGE
         </button>

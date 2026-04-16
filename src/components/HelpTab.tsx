@@ -4,19 +4,30 @@ import { CONTRACT_ADDRESS } from '@/config/contract';
 
 const ETHERSCAN = 'https://sepolia.etherscan.io';
 
+// ─── Typography helper ────────────────────────────────────────────────────────
+
+const cp = (weight: number, size: number, spacing = '0.03em') => ({
+  fontFamily: "'Chakra Petch', sans-serif",
+  fontWeight: weight,
+  fontSize: size,
+  letterSpacing: spacing,
+});
+
+// ─── FAQ item ─────────────────────────────────────────────────────────────────
+
 const FAQ = ({ q, a }: { q: string; a: string }) => {
   const [open, setOpen] = useState(false);
   return (
-    <div style={{ borderBottom: '1px solid rgba(255,255,255,0.09)' }}>
+    <div style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
       <button
         onClick={() => setOpen(!open)}
-        className="w-full py-4 flex items-center justify-between text-left"
+        className="w-full py-4 flex items-center justify-between text-left gap-4"
       >
-        <span className="font-satoshi text-sm font-medium text-white pr-4">{q}</span>
+        <span style={{ ...cp(500, 14), color: 'white' }}>{q}</span>
         <motion.span
           animate={{ rotate: open ? 180 : 0 }}
-          className="text-xs shrink-0"
-          style={{ color: 'var(--color-text-muted)' }}
+          className="shrink-0"
+          style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11 }}
         >
           ▾
         </motion.span>
@@ -26,13 +37,18 @@ const FAQ = ({ q, a }: { q: string; a: string }) => {
         animate={{ height: open ? 'auto' : 0, opacity: open ? 1 : 0 }}
         className="overflow-hidden"
       >
-        <p className="pb-4 font-satoshi text-sm leading-relaxed whitespace-pre-line" style={{ color: 'var(--color-text-secondary)' }}>
+        <p
+          className="pb-4 leading-relaxed whitespace-pre-line"
+          style={{ ...cp(400, 13), color: 'rgba(255,255,255,0.55)', lineHeight: 1.65 }}
+        >
           {a}
         </p>
       </motion.div>
     </div>
   );
 };
+
+// ─── Collapsible Section card ─────────────────────────────────────────────────
 
 const Section = ({
   title,
@@ -49,24 +65,39 @@ const Section = ({
 
   return (
     <motion.section
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay, duration: 0.45 }}
-      className="mb-4"
+      transition={{ delay, duration: 0.4 }}
+      className="mb-3 overflow-hidden"
+      style={{
+        background: '#0F1318',
+        border: '1px solid rgba(0,229,255,0.12)',
+        borderRadius: 12,
+        boxShadow: '0 0 32px rgba(0,229,255,0.03)',
+      }}
     >
+      {/* Header */}
       <button
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between py-3 group"
+        className="w-full flex items-center justify-between px-5 py-4"
       >
-        <h2 className="font-clash text-xl uppercase tracking-tight group-hover:text-white transition-colors">{title}</h2>
+        <h2
+          className="uppercase text-left"
+          style={{ ...cp(700, 16, '0.08em'), color: 'rgba(255,255,255,0.95)' }}
+        >
+          {title}
+        </h2>
         <motion.span
           animate={{ rotate: open ? 180 : 0 }}
-          className="text-sm"
-          style={{ color: 'var(--color-text-muted)' }}
+          style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12, flexShrink: 0 }}
         >
           ▾
         </motion.span>
       </button>
+
+      {/* Divider */}
+      <div style={{ height: 1, background: 'rgba(255,255,255,0.05)', margin: '0 20px' }} />
+
       <AnimatePresence initial={false}>
         {open && (
           <motion.div
@@ -76,7 +107,7 @@ const Section = ({
             transition={{ duration: 0.3 }}
             className="overflow-hidden"
           >
-            <div className="pb-6">
+            <div className="px-5 py-5">
               {children}
             </div>
           </motion.div>
@@ -86,76 +117,118 @@ const Section = ({
   );
 };
 
+// ─── Table row ────────────────────────────────────────────────────────────────
+
 const TRow = ({ cells, header, highlight }: { cells: string[]; header?: boolean; highlight?: boolean }) => (
   <div
-    className={`flex items-center gap-2 px-4 py-2.5 ${header ? 'font-mono text-[10px] tracking-widest uppercase' : 'font-satoshi text-sm'}`}
+    className="flex items-center gap-2 px-4 py-2.5"
     style={{
-      background: header ? 'rgba(255,255,255,0.04)' : highlight ? 'rgba(255,224,61,0.03)' : 'transparent',
-      color: header ? 'var(--color-text-muted)' : 'var(--color-text-secondary)',
-      borderBottom: '1px solid rgba(255,255,255,0.03)',
+      background: header ? 'rgba(255,255,255,0.04)' : highlight ? 'rgba(0,229,255,0.03)' : 'transparent',
+      borderBottom: '1px solid rgba(255,255,255,0.04)',
     }}
   >
     {cells.map((cell, i) => (
-      <span key={i} className={`flex-1 ${i === 0 && !header ? 'text-white font-medium' : ''}`}>
+      <span
+        key={i}
+        className="flex-1"
+        style={
+          header
+            ? { ...cp(500, 10, '0.15em'), color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase' }
+            : i === 0
+              ? { ...cp(600, 13), color: highlight ? '#00E5FF' : 'white' }
+              : { ...cp(400, 13), color: 'rgba(255,255,255,0.55)' }
+        }
+      >
         {cell}
       </span>
     ))}
   </div>
 );
 
+// ─── Code block ───────────────────────────────────────────────────────────────
+
 const Code = ({ children }: { children: string }) => (
   <pre
-    className="font-mono text-[11px] leading-relaxed p-4 rounded-xl overflow-x-auto"
-    style={{ background: 'rgba(0,0,0,0.4)', color: 'var(--color-fhe)', border: '1px solid rgba(179,102,255,0.1)' }}
+    className="leading-relaxed p-4 rounded-xl overflow-x-auto"
+    style={{
+      ...cp(400, 11, '0.02em'),
+      background: 'rgba(0,0,0,0.5)',
+      color: '#B366FF',
+      border: '1px solid rgba(179,102,255,0.12)',
+      lineHeight: 1.7,
+    }}
   >
     {children}
   </pre>
 );
 
+// ─── Main tab ─────────────────────────────────────────────────────────────────
+
 export const HelpTab = () => {
   const deployed = CONTRACT_ADDRESS !== '0x0000000000000000000000000000000000000000';
 
   return (
-    <div className="w-full max-w-[780px] mx-auto py-10 px-4 min-h-[calc(100vh-112px)]">
-      <motion.h1
-        initial={{ opacity: 0, y: 20 }}
+    <div
+      className="w-full max-w-[780px] mx-auto py-10 px-4 min-h-[calc(100vh-112px)]"
+      style={{ background: '#0A0D12' }}
+    >
+      {/* Page title */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
-        className="font-clash text-[48px] uppercase tracking-tight mb-2"
+        className="flex items-center gap-4 mb-2"
       >
-        POKER GUIDE
-      </motion.h1>
+        <h1
+          className="uppercase leading-none"
+          style={{ ...cp(700, 52, '0.06em'), color: 'white' }}
+        >
+          GUIDE
+        </h1>
+      </motion.div>
       <motion.p
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.05 }}
-        className="font-satoshi text-sm mb-8"
-        style={{ color: 'var(--color-text-muted)' }}
+        className="mb-8"
+        style={{ ...cp(400, 13), color: 'rgba(255,255,255,0.35)' }}
       >
-        Cofhe 3-Card Poker + Texas Hold'em
+        Cofhe Poker · Texas Hold'em
       </motion.p>
 
-      {/* ══════════════════════════════════════════════════════════════ */}
-      {/* COFHE 3-CARD POKER (OUR GAME)                               */}
-      {/* ══════════════════════════════════════════════════════════════ */}
-
-      <div
-        className="px-5 py-4 rounded-2xl mb-6"
-        style={{ background: 'rgba(179,102,255,0.04)', border: '1px solid rgba(179,102,255,0.12)' }}
+      {/* "OUR GAME" callout */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.04 }}
+        className="px-5 py-4 mb-5"
+        style={{
+          background: 'rgba(179,102,255,0.06)',
+          border: '1px solid rgba(179,102,255,0.18)',
+          borderRadius: 12,
+        }}
       >
-        <div className="font-mono text-[10px] tracking-widest uppercase mb-2" style={{ color: 'var(--color-fhe)' }}>
+        <span
+          className="uppercase block mb-1.5"
+          style={{ ...cp(600, 10, '0.18em'), color: '#B366FF' }}
+        >
           OUR GAME
-        </div>
-        <div className="font-clash text-lg uppercase tracking-tight text-white mb-1">Cofhe 3-Card Poker</div>
-        <div className="font-satoshi text-xs" style={{ color: 'var(--color-text-muted)' }}>
+        </span>
+        <span
+          className="block mb-1"
+          style={{ ...cp(700, 16, '0.04em'), color: 'white' }}
+        >
+          Cofhe Poker
+        </span>
+        <span style={{ ...cp(400, 13), color: 'rgba(255,255,255,0.4)' }}>
           FHE-encrypted on-chain poker. 3 cards, no community cards, instant showdown.
-        </div>
-      </div>
+        </span>
+      </motion.div>
 
-      {/* ── How to Play (Our Game) ── */}
+      {/* ── How to Play ── */}
       <Section title="How to Play" delay={0.05} defaultOpen>
         <div
-          className="rounded-2xl p-5 mb-4"
-          style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.10)' }}
+          className="rounded-xl overflow-hidden"
+          style={{ border: '1px solid rgba(255,255,255,0.07)' }}
         >
           {[
             { step: '01', text: 'Connect MetaMask on Sepolia testnet' },
@@ -165,16 +238,16 @@ export const HelpTab = () => {
             { step: '05', text: 'Sign permit to decrypt your 3 cards (only you can see them)' },
             { step: '06', text: 'Choose PLAY (bet 10 more) or FOLD (lose Ante only)' },
             { step: '07', text: 'Dealer must qualify with Queen-high or better' },
-            { step: '08', text: 'If dealer doesn\'t qualify → you win Ante 1:1, Play bet returned' },
+            { step: '08', text: "If dealer doesn't qualify → you win Ante 1:1, Play bet returned" },
             { step: '09', text: 'If both qualify → showdown! Higher hand wins. Ante Bonus pays for strong hands' },
           ].map((s, i) => (
             <div
               key={i}
-              className="flex items-start gap-4 py-3"
-              style={{ borderBottom: i < 8 ? '1px solid rgba(255,255,255,0.09)' : 'none' }}
+              className="flex items-start gap-4 px-4 py-3"
+              style={{ borderBottom: i < 8 ? '1px solid rgba(255,255,255,0.05)' : 'none' }}
             >
-              <span className="font-clash text-2xl shrink-0 w-8" style={{ color: 'var(--color-text-dark)' }}>{s.step}</span>
-              <span className="font-satoshi text-sm leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>{s.text}</span>
+              <span style={{ ...cp(700, 18, '0.02em'), color: 'rgba(0,229,255,0.3)', minWidth: 32 }}>{s.step}</span>
+              <span style={{ ...cp(400, 13), color: 'rgba(255,255,255,0.6)', lineHeight: 1.55 }}>{s.text}</span>
             </div>
           ))}
         </div>
@@ -182,10 +255,10 @@ export const HelpTab = () => {
 
       {/* ── 3-Card Hand Rankings ── */}
       <Section title="3-Card Rankings" delay={0.08}>
-        <p className="font-satoshi text-xs mb-4" style={{ color: 'var(--color-text-muted)' }}>
+        <p className="mb-4" style={{ ...cp(400, 13), color: 'rgba(255,255,255,0.4)' }}>
           In 3-card poker, Straight beats Flush (harder to hit with 3 cards). Mini Royal = A-K-Q suited.
         </p>
-        <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>
+        <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.07)' }}>
           <TRow cells={['Hand', 'Example', 'Description']} header />
           {[
             ['Mini Royal', 'A♠ K♠ Q♠', 'A-K-Q of one suit (best hand)'],
@@ -204,12 +277,11 @@ export const HelpTab = () => {
       {/* ── Payouts ── */}
       <Section title="Payouts & Bets" delay={0.1}>
         <div className="space-y-5">
-          {/* Ante + Play */}
           <div>
-            <div className="font-mono text-[10px] tracking-widest uppercase mb-2" style={{ color: 'var(--color-primary)' }}>
+            <span className="uppercase block mb-2" style={{ ...cp(500, 10, '0.15em'), color: 'var(--color-primary)' }}>
               Ante & Play Payouts
-            </div>
-            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>
+            </span>
+            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.07)' }}>
               <TRow cells={['Result', 'Ante', 'Play']} header />
               <TRow cells={['You win', '+1:1', '+1:1']} />
               <TRow cells={['Push (tie)', 'Returned', 'Returned']} />
@@ -218,13 +290,11 @@ export const HelpTab = () => {
               <TRow cells={['You fold', 'Lost', 'N/A']} />
             </div>
           </div>
-
-          {/* Ante Bonus */}
           <div>
-            <div className="font-mono text-[10px] tracking-widest uppercase mb-2" style={{ color: 'var(--color-success)' }}>
+            <span className="uppercase block mb-2" style={{ ...cp(500, 10, '0.15em'), color: 'var(--color-success)' }}>
               Ante Bonus (paid regardless of dealer hand)
-            </div>
-            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>
+            </span>
+            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.07)' }}>
               <TRow cells={['Hand', 'Bonus']} header />
               <TRow cells={['Straight', '1:1 (1x Ante)']} />
               <TRow cells={['Three of a Kind', '4:1 (4x Ante)']} />
@@ -232,13 +302,11 @@ export const HelpTab = () => {
               <TRow cells={['Mini Royal', '5:1 (5x Ante)']} highlight />
             </div>
           </div>
-
-          {/* Pair Plus */}
           <div>
-            <div className="font-mono text-[10px] tracking-widest uppercase mb-2" style={{ color: 'var(--color-fhe)' }}>
+            <span className="uppercase block mb-2" style={{ ...cp(500, 10, '0.15em'), color: 'var(--color-fhe)' }}>
               Pair Plus (independent side bet — pays even on fold!)
-            </div>
-            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>
+            </span>
+            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.07)' }}>
               <TRow cells={['Hand', 'Payout']} header />
               <TRow cells={['Pair', '1:1']} />
               <TRow cells={['Flush', '4:1']} />
@@ -246,21 +314,19 @@ export const HelpTab = () => {
               <TRow cells={['Three of a Kind', '30:1']} />
               <TRow cells={['Straight Flush / Mini Royal', '40:1']} highlight />
             </div>
-            <p className="font-satoshi text-xs mt-2" style={{ color: 'var(--color-text-muted)' }}>
+            <p className="mt-2" style={{ ...cp(400, 12), color: 'rgba(255,255,255,0.35)' }}>
               Pair Plus is optional. If you have no pair, you lose the side bet regardless of game outcome.
             </p>
           </div>
-
-          {/* Dealer Qualification */}
           <div
             className="p-4 rounded-xl"
-            style={{ background: 'rgba(255,224,61,0.04)', border: '1px solid rgba(255,224,61,0.12)' }}
+            style={{ background: 'rgba(255,224,61,0.04)', border: '1px solid rgba(255,224,61,0.1)' }}
           >
-            <div className="font-mono text-[10px] tracking-widest uppercase mb-2" style={{ color: 'var(--color-primary)' }}>
+            <span className="uppercase block mb-2" style={{ ...cp(500, 10, '0.15em'), color: 'var(--color-primary)' }}>
               Dealer Qualification
-            </div>
-            <p className="font-satoshi text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-              Dealer must have <strong className="text-white">Queen-high or better</strong> to qualify.
+            </span>
+            <p style={{ ...cp(400, 13), color: 'rgba(255,255,255,0.55)', lineHeight: 1.55 }}>
+              Dealer must have <strong style={{ color: 'white' }}>Queen-high or better</strong> to qualify.
               If the dealer doesn't qualify, you automatically win 1:1 on Ante and your Play bet is returned (push).
               Ante Bonus and Pair Plus still pay normally.
             </p>
@@ -268,28 +334,22 @@ export const HelpTab = () => {
         </div>
       </Section>
 
-      {/* ══════════════════════════════════════════════════════════════ */}
-      {/* TEXAS HOLD'EM GUIDE                                          */}
-      {/* ══════════════════════════════════════════════════════════════ */}
-
-      <div
-        className="h-px my-8"
-        style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent)' }}
-      />
-      <motion.div
+      {/* ── Section separator ── */}
+      <div className="h-px my-6" style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.07), transparent)' }} />
+      <motion.span
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.15 }}
-        className="font-mono text-[10px] tracking-widest uppercase mb-6"
-        style={{ color: 'var(--color-text-muted)' }}
+        className="uppercase block mb-5"
+        style={{ ...cp(500, 10, '0.2em'), color: 'rgba(255,255,255,0.25)' }}
       >
         GENERAL POKER KNOWLEDGE
-      </motion.div>
+      </motion.span>
 
       {/* ── Deck ── */}
       <Section title="1. The Deck" delay={0.12}>
         <div className="space-y-3">
-          <p className="font-satoshi text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+          <p style={{ ...cp(400, 13), color: 'rgba(255,255,255,0.55)' }}>
             52 cards = 13 ranks x 4 suits. Suit only matters for flushes.
           </p>
           <Code>{`Ranks: 2  3  4  5  6  7  8  9  10  J   Q   K   A
@@ -301,7 +361,7 @@ Suits: ♠ Spades  ♥ Hearts  ♦ Diamonds  ♣ Clubs`}</Code>
 
       {/* ── Poker Types ── */}
       <Section title="2. Types of Poker" delay={0.14}>
-        <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>
+        <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.07)' }}>
           <TRow cells={['Type', 'Hole Cards', 'Community']} header />
           <TRow cells={["Texas Hold'em", '2', '5 (3+1+1)']} highlight />
           <TRow cells={['Omaha', '4 (use exactly 2)', '5']} />
@@ -317,7 +377,7 @@ Suits: ♠ Spades  ♥ Hearts  ♦ Diamonds  ♣ Clubs`}</Code>
 SB   = Small Blind    — posts half the minimum bet
 BB   = Big Blind      — posts the full minimum bet
 UTG  = Under the Gun  — first to act pre-flop`}</Code>
-          <p className="font-satoshi text-xs" style={{ color: 'var(--color-text-muted)' }}>
+          <p style={{ ...cp(400, 12), color: 'rgba(255,255,255,0.35)' }}>
             Roles rotate clockwise after every hand.
           </p>
         </div>
@@ -325,42 +385,30 @@ UTG  = Under the Gun  — first to act pre-flop`}</Code>
 
       {/* ── Hand Structure ── */}
       <Section title="4. Hand Structure (Hold'em)" delay={0.18}>
-        <div className="space-y-4">
+        <div className="space-y-3">
           {[
-            {
-              phase: 'PREFLOP',
-              color: 'var(--color-primary)',
-              desc: 'SB & BB post blinds. Each player gets 2 hole cards. Betting starts from UTG.',
-            },
-            {
-              phase: 'FLOP',
-              color: 'var(--color-fhe)',
-              desc: 'Burn 1 card, reveal 3 community cards. Betting starts from SB.',
-            },
-            {
-              phase: 'TURN',
-              color: 'var(--color-success)',
-              desc: 'Burn 1 card, reveal 1 more community card. Betting round.',
-            },
-            {
-              phase: 'RIVER',
-              color: 'var(--color-danger)',
-              desc: 'Burn 1 card, reveal the last community card. Final betting round.',
-            },
-            {
-              phase: 'SHOWDOWN',
-              color: '#FFF',
-              desc: 'Remaining players show hands. Best 5 of 7 cards wins the pot.',
-            },
+            { phase: 'PREFLOP', color: 'var(--color-primary)', desc: 'SB & BB post blinds. Each player gets 2 hole cards. Betting starts from UTG.' },
+            { phase: 'FLOP',    color: 'var(--color-fhe)',     desc: 'Burn 1 card, reveal 3 community cards. Betting starts from SB.' },
+            { phase: 'TURN',    color: 'var(--color-success)', desc: 'Burn 1 card, reveal 1 more community card. Betting round.' },
+            { phase: 'RIVER',   color: 'var(--color-danger)',  desc: 'Burn 1 card, reveal the last community card. Final betting round.' },
+            { phase: 'SHOWDOWN', color: '#FFF',                desc: 'Remaining players show hands. Best 5 of 7 cards wins the pot.' },
           ].map((p, i) => (
             <div key={i} className="flex items-start gap-4">
               <div
-                className="font-mono text-[10px] tracking-widest uppercase shrink-0 w-20 py-1.5 rounded-full text-center"
-                style={{ background: `${p.color}15`, color: p.color, border: `1px solid ${p.color}30` }}
+                className="uppercase shrink-0 text-center"
+                style={{
+                  ...cp(600, 10, '0.12em'),
+                  width: 80,
+                  padding: '5px 0',
+                  borderRadius: 999,
+                  background: `${p.color}15`,
+                  color: p.color,
+                  border: `1px solid ${p.color}30`,
+                }}
               >
                 {p.phase}
               </div>
-              <span className="font-satoshi text-sm" style={{ color: 'var(--color-text-secondary)' }}>{p.desc}</span>
+              <span style={{ ...cp(400, 13), color: 'rgba(255,255,255,0.55)', lineHeight: 1.55 }}>{p.desc}</span>
             </div>
           ))}
         </div>
@@ -368,7 +416,7 @@ UTG  = Under the Gun  — first to act pre-flop`}</Code>
 
       {/* ── Actions ── */}
       <Section title="5. Betting Actions" delay={0.2}>
-        <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>
+        <div className="rounded-xl overflow-hidden mb-3" style={{ border: '1px solid rgba(255,255,255,0.07)' }}>
           <TRow cells={['Action', 'When', 'Effect']} header />
           <TRow cells={['FOLD', 'Any time', 'Discard cards, lose all bets']} />
           <TRow cells={['CHECK', 'No bet yet', 'Pass without betting']} />
@@ -377,17 +425,17 @@ UTG  = Under the Gun  — first to act pre-flop`}</Code>
           <TRow cells={['RAISE', 'After bet', 'Increase the current bet']} />
           <TRow cells={['ALL-IN', 'Any time', 'Bet all remaining chips']} />
         </div>
-        <p className="font-satoshi text-xs mt-2" style={{ color: 'var(--color-text-muted)' }}>
+        <p style={{ ...cp(400, 12), color: 'rgba(255,255,255,0.35)' }}>
           Minimum raise = size of previous raise or BB (whichever is larger).
         </p>
       </Section>
 
       {/* ── 5-Card Hand Rankings ── */}
       <Section title="6. Hand Rankings (5-Card)" delay={0.22}>
-        <p className="font-satoshi text-xs mb-3" style={{ color: 'var(--color-text-muted)' }}>
+        <p className="mb-3" style={{ ...cp(400, 13), color: 'rgba(255,255,255,0.4)' }}>
           Standard poker hand rankings. In 5-card poker, Flush beats Straight (opposite of 3-card).
         </p>
-        <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.10)' }}>
+        <div className="rounded-xl overflow-hidden mb-3" style={{ border: '1px solid rgba(255,255,255,0.07)' }}>
           <TRow cells={['#', 'Hand', 'Example', 'Probability']} header />
           {[
             ['1', 'Royal Flush', 'A K Q J 10 suited', '0.00015%'],
@@ -405,11 +453,13 @@ UTG  = Under the Gun  — first to act pre-flop`}</Code>
           ))}
         </div>
         <div
-          className="mt-3 p-3 rounded-xl font-satoshi text-xs"
-          style={{ background: 'rgba(255,224,61,0.04)', border: '1px solid rgba(255,224,61,0.1)', color: 'var(--color-text-secondary)' }}
+          className="p-3 rounded-xl"
+          style={{ background: 'rgba(255,224,61,0.04)', border: '1px solid rgba(255,224,61,0.1)' }}
         >
-          <strong className="text-white">Ace in straights:</strong> A-K-Q-J-10 = highest straight (Royal if suited).
-          A-2-3-4-5 = lowest straight (Ace plays as 1, high card = 5).
+          <p style={{ ...cp(400, 13), color: 'rgba(255,255,255,0.55)' }}>
+            <strong style={{ color: 'white' }}>Ace in straights:</strong> A-K-Q-J-10 = highest straight (Royal if suited).
+            A-2-3-4-5 = lowest straight (Ace plays as 1, high card = 5).
+          </p>
         </div>
       </Section>
 
@@ -446,8 +496,8 @@ High Card      = c1×10⁸ + c2×10⁶ + c3×10⁴ + c4×100 + c5`}</Code>
       {/* ── Showdown ── */}
       <Section title="9. Showdown Rules" delay={0.28}>
         <div
-          className="rounded-xl p-4 space-y-2"
-          style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.10)' }}
+          className="rounded-xl p-4 space-y-2.5"
+          style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}
         >
           {[
             'Last aggressor (bet/raise) shows first',
@@ -456,9 +506,9 @@ High Card      = c1×10⁸ + c2×10⁶ + c3×10⁴ + c4×100 + c5`}</Code>
             'Player can use 0, 1, or 2 hole cards',
             'If 5 community cards are best → "play the board"',
           ].map((rule, i) => (
-            <div key={i} className="flex items-start gap-2 font-satoshi text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-              <span className="w-1 h-1 rounded-full shrink-0 mt-2" style={{ background: 'var(--color-primary)' }} />
-              {rule}
+            <div key={i} className="flex items-start gap-2.5">
+              <span className="w-1 h-1 rounded-full mt-[7px] shrink-0" style={{ background: 'var(--color-primary)' }} />
+              <span style={{ ...cp(400, 13), color: 'rgba(255,255,255,0.55)', lineHeight: 1.55 }}>{rule}</span>
             </div>
           ))}
         </div>
@@ -466,7 +516,7 @@ High Card      = c1×10⁸ + c2×10⁶ + c3×10⁴ + c4×100 + c5`}</Code>
 
       {/* ── Side Pots ── */}
       <Section title="10. Side Pots" delay={0.3}>
-        <p className="font-satoshi text-sm mb-3" style={{ color: 'var(--color-text-secondary)' }}>
+        <p className="mb-3" style={{ ...cp(400, 13), color: 'rgba(255,255,255,0.55)' }}>
           When a player goes all-in with fewer chips than others, side pots are created.
         </p>
         <Code>{`Player A: 100 chips all-in
@@ -514,29 +564,23 @@ NEXT HAND
 └── Rotate roles clockwise, repeat`}</Code>
       </Section>
 
-      {/* ══════════════════════════════════════════════════════════════ */}
-      {/* FHE / TECHNICAL                                              */}
-      {/* ══════════════════════════════════════════════════════════════ */}
-
-      <div
-        className="h-px my-8"
-        style={{ background: 'linear-gradient(90deg, transparent, rgba(179,102,255,0.15), transparent)' }}
-      />
-      <motion.div
+      {/* ── FHE separator ── */}
+      <div className="h-px my-6" style={{ background: 'linear-gradient(90deg, transparent, rgba(179,102,255,0.15), transparent)' }} />
+      <motion.span
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.35 }}
-        className="font-mono text-[10px] tracking-widest uppercase mb-6"
-        style={{ color: 'var(--color-fhe)' }}
+        className="uppercase block mb-5"
+        style={{ ...cp(500, 10, '0.2em'), color: 'rgba(179,102,255,0.5)' }}
       >
         FHE ENCRYPTION & TECHNOLOGY
-      </motion.div>
+      </motion.span>
 
       {/* ── What is FHE? ── */}
       <Section title="What is FHE?" delay={0.36}>
-        <div className="font-satoshi text-sm leading-relaxed space-y-4" style={{ color: 'var(--color-text-secondary)' }}>
+        <div className="space-y-3" style={{ ...cp(400, 13), color: 'rgba(255,255,255,0.55)', lineHeight: 1.65 }}>
           <p>
-            <strong className="text-white">Fully Homomorphic Encryption (FHE)</strong> allows computation
+            <strong style={{ color: 'white', fontWeight: 600 }}>Fully Homomorphic Encryption (FHE)</strong> allows computation
             on encrypted data without ever decrypting it. The result is also encrypted.
           </p>
           <p>
@@ -554,33 +598,33 @@ NEXT HAND
       <Section title="Privacy Guarantees" delay={0.38}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div
-            className="p-5 rounded-2xl"
-            style={{ background: 'rgba(179,102,255,0.04)', border: '1px solid rgba(179,102,255,0.12)' }}
+            className="p-4 rounded-xl"
+            style={{ background: 'rgba(179,102,255,0.05)', border: '1px solid rgba(179,102,255,0.14)' }}
           >
-            <div className="font-mono text-xs tracking-widest uppercase mb-3 flex items-center gap-2" style={{ color: 'var(--color-fhe)' }}>
+            <span className="uppercase block mb-3" style={{ ...cp(600, 10, '0.15em'), color: '#B366FF' }}>
               Hidden (FHE Encrypted)
-            </div>
-            <ul className="space-y-2 font-satoshi text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+            </span>
+            <ul className="space-y-2">
               {['Card values', 'Card-to-player mapping', "Losing player's hand", 'Hand evaluation scores', 'Bot decision logic'].map((item, i) => (
-                <li key={i} className="flex items-center gap-2">
-                  <span className="w-1 h-1 rounded-full shrink-0" style={{ background: 'var(--color-fhe)' }} />
-                  {item}
+                <li key={i} className="flex items-center gap-2.5">
+                  <span className="w-1 h-1 rounded-full shrink-0" style={{ background: '#B366FF' }} />
+                  <span style={{ ...cp(400, 13), color: 'rgba(255,255,255,0.55)' }}>{item}</span>
                 </li>
               ))}
             </ul>
           </div>
           <div
-            className="p-5 rounded-2xl"
-            style={{ background: 'rgba(0,232,108,0.03)', border: '1px solid rgba(0,232,108,0.1)' }}
+            className="p-4 rounded-xl"
+            style={{ background: 'rgba(0,232,108,0.04)', border: '1px solid rgba(0,232,108,0.12)' }}
           >
-            <div className="font-mono text-xs tracking-widest uppercase mb-3 flex items-center gap-2" style={{ color: 'var(--color-success)' }}>
+            <span className="uppercase block mb-3" style={{ ...cp(600, 10, '0.15em'), color: 'var(--color-success)' }}>
               Public (On-Chain)
-            </div>
-            <ul className="space-y-2 font-satoshi text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+            </span>
+            <ul className="space-y-2">
               {['Bet amounts & balances', 'Player actions (fold/play)', 'Winner address', 'Pot size', 'Transaction hashes'].map((item, i) => (
-                <li key={i} className="flex items-center gap-2">
+                <li key={i} className="flex items-center gap-2.5">
                   <span className="w-1 h-1 rounded-full shrink-0" style={{ background: 'var(--color-success)' }} />
-                  {item}
+                  <span style={{ ...cp(400, 13), color: 'rgba(255,255,255,0.55)' }}>{item}</span>
                 </li>
               ))}
             </ul>
@@ -591,8 +635,8 @@ NEXT HAND
       {/* ── FHE Operations ── */}
       <Section title="FHE Operations Used" delay={0.4}>
         <div
-          className="rounded-2xl overflow-hidden"
-          style={{ border: '1px solid rgba(255,255,255,0.10)' }}
+          className="rounded-xl overflow-hidden"
+          style={{ border: '1px solid rgba(255,255,255,0.07)' }}
         >
           {[
             ['FHE.randomEuint64()', 'Encrypted seed for card dealing'],
@@ -610,10 +654,10 @@ NEXT HAND
             <div
               key={i}
               className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 px-5 py-3"
-              style={{ background: i % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'transparent' }}
+              style={{ background: i % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'transparent', borderBottom: '1px solid rgba(255,255,255,0.04)' }}
             >
-              <code className="font-mono text-xs min-w-[200px]" style={{ color: 'var(--color-fhe)' }}>{code}</code>
-              <span className="font-satoshi text-xs" style={{ color: 'var(--color-text-muted)' }}>{desc}</span>
+              <code style={{ ...cp(500, 12, '0.03em'), color: '#B366FF', minWidth: 200 }}>{code}</code>
+              <span style={{ ...cp(400, 12), color: 'rgba(255,255,255,0.4)' }}>{desc}</span>
             </div>
           ))}
         </div>
@@ -622,83 +666,60 @@ NEXT HAND
       {/* ── FAQ ── */}
       <Section title="FAQ" delay={0.42}>
         <div
-          className="rounded-2xl px-5"
-          style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.10)' }}
+          className="rounded-xl px-5"
+          style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}
         >
-          <FAQ
-            q="Is this real poker with real money?"
-            a="No. Cofhe Poker uses virtual chips with no monetary value. It's a proof-of-concept for the Fhenix Buildathon 2026 demonstrating FHE-encrypted gaming on Ethereum."
-          />
-          <FAQ
-            q="Can the dealer/bot cheat?"
-            a="No. Cards and decision logic are handled entirely through FHE in the smart contract. The bot uses the Q-6-4 optimal strategy with small randomness — it cannot see your cards."
-          />
-          <FAQ
-            q="Why does dealing take so long?"
-            a="FHE operations are computationally intensive. Generating encrypted random cards, checking for duplicates, and evaluating hands all happen in ciphertext on-chain via the Fhenix CoFHE threshold network."
-          />
-          <FAQ
-            q="What's the Pair Plus bet?"
-            a="An optional 10-chip side bet that pays based only on your hand strength, regardless of the dealer's hand or game outcome. It pays even if you fold! Pair = 1:1, Flush = 4:1, Straight = 6:1, Trips = 30:1, Straight Flush = 40:1."
-          />
-          <FAQ
-            q="What does 'Dealer doesn't qualify' mean?"
-            a="The dealer needs Queen-high or better to qualify. If they don't, you win 1:1 on your Ante and your Play bet is returned (push). Ante Bonus and Pair Plus pay normally regardless."
-          />
-          <FAQ
-            q="Why does Straight beat Flush in 3-card?"
-            a="With only 3 cards, getting 3 consecutive ranks is statistically harder than getting 3 of the same suit. So in 3-card poker, the rankings are different from 5-card poker."
-          />
-          <FAQ
-            q="What network do I need?"
-            a="Ethereum Sepolia testnet. Get free Sepolia ETH from faucets like sepolia-faucet.pk910.de or Google Cloud's Sepolia faucet."
-          />
-          <FAQ
-            q="Why do I need to sign a permit?"
-            a="The EIP-712 permit proves to the CoFHE threshold network that you're authorized to decrypt your own cards. Without it, nobody — not even you — can see the card values."
-          />
-          <FAQ
-            q="Can I see the losing hand?"
-            a="No. When you lose, your opponent's cards remain encrypted forever. Only the winner's cards are revealed via FHE.allowPublic(). This mirrors real poker — you don't see mucked cards."
-          />
+          <FAQ q="Is this real poker with real money?" a="No. Cofhe Poker uses virtual chips with no monetary value. It's a proof-of-concept for the Fhenix Buildathon 2026 demonstrating FHE-encrypted gaming on Ethereum." />
+          <FAQ q="Can the dealer/bot cheat?" a="No. Cards and decision logic are handled entirely through FHE in the smart contract. The bot uses the Q-6-4 optimal strategy with small randomness — it cannot see your cards." />
+          <FAQ q="Why does dealing take so long?" a="FHE operations are computationally intensive. Generating encrypted random cards, checking for duplicates, and evaluating hands all happen in ciphertext on-chain via the Fhenix CoFHE threshold network." />
+          <FAQ q="What's the Pair Plus bet?" a="An optional 10-chip side bet that pays based only on your hand strength, regardless of the dealer's hand or game outcome. It pays even if you fold! Pair = 1:1, Flush = 4:1, Straight = 6:1, Trips = 30:1, Straight Flush = 40:1." />
+          <FAQ q="What does 'Dealer doesn't qualify' mean?" a="The dealer needs Queen-high or better to qualify. If they don't, you win 1:1 on your Ante and your Play bet is returned (push). Ante Bonus and Pair Plus pay normally regardless." />
+          <FAQ q="Why does Straight beat Flush in 3-card?" a="With only 3 cards, getting 3 consecutive ranks is statistically harder than getting 3 of the same suit. So in 3-card poker, the rankings are different from 5-card poker." />
+          <FAQ q="What network do I need?" a="Ethereum Sepolia testnet. Get free Sepolia ETH from faucets like sepolia-faucet.pk910.de or Google Cloud's Sepolia faucet." />
+          <FAQ q="Why do I need to sign a permit?" a="The EIP-712 permit proves to the CoFHE threshold network that you're authorized to decrypt your own cards. Without it, nobody — not even you — can see the card values." />
+          <FAQ q="Can I see the losing hand?" a="No. When you lose, your opponent's cards remain encrypted forever. Only the winner's cards are revealed via FHE.allowPublic(). This mirrors real poker — you don't see mucked cards." />
         </div>
       </Section>
 
-      {/* ── Verify ── */}
+      {/* ── Verify & Links ── */}
       <Section title="Verify & Links" delay={0.44}>
-        <div
-          className="rounded-2xl p-5"
-          style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.10)' }}
-        >
-          <p className="font-satoshi text-sm mb-4" style={{ color: 'var(--color-text-secondary)' }}>
-            Every hand is a verifiable Ethereum transaction. All ciphertexts are public — but unreadable without a permit.
-          </p>
-          {deployed && (
-            <div className="font-mono text-xs break-all mb-4 p-3 rounded-xl" style={{ background: 'rgba(0,0,0,0.3)', color: 'var(--color-text-muted)' }}>
-              {CONTRACT_ADDRESS}
-            </div>
-          )}
-          <div className="flex flex-wrap gap-2">
-            {[
-              deployed && { label: 'Etherscan', href: `${ETHERSCAN}/address/${CONTRACT_ADDRESS}` },
-              { label: 'Fhenix Docs', href: 'https://cofhe-docs.fhenix.zone' },
-              { label: 'CoFHE SDK', href: 'https://www.npmjs.com/package/@cofhe/sdk' },
-              { label: 'Awesome Fhenix', href: 'https://github.com/FhenixProtocol/awesome-fhenix' },
-            ]
-              .filter(Boolean)
-              .map(link => (
-                <a
-                  key={link!.label}
-                  href={link!.href}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="font-mono text-[10px] tracking-widest px-3 py-1.5 rounded-full transition-colors hover:text-white"
-                  style={{ color: 'var(--color-info)', border: '1px solid rgba(77,124,255,0.2)' }}
-                >
-                  {link!.label}
-                </a>
-              ))}
+        <p className="mb-4" style={{ ...cp(400, 13), color: 'rgba(255,255,255,0.55)', lineHeight: 1.55 }}>
+          Every hand is a verifiable Ethereum transaction. All ciphertexts are public — but unreadable without a permit.
+        </p>
+        {deployed && (
+          <div
+            className="mb-4 p-3 rounded-xl break-all"
+            style={{ ...cp(400, 11, '0.03em'), background: 'rgba(0,0,0,0.4)', color: 'rgba(255,255,255,0.3)', border: '1px solid rgba(255,255,255,0.06)' }}
+          >
+            {CONTRACT_ADDRESS}
           </div>
+        )}
+        <div className="flex flex-wrap gap-2">
+          {[
+            deployed && { label: 'Etherscan', href: `${ETHERSCAN}/address/${CONTRACT_ADDRESS}` },
+            { label: 'Fhenix Docs', href: 'https://cofhe-docs.fhenix.zone' },
+            { label: 'CoFHE SDK', href: 'https://www.npmjs.com/package/@cofhe/sdk' },
+            { label: 'Awesome Fhenix', href: 'https://github.com/FhenixProtocol/awesome-fhenix' },
+          ]
+            .filter(Boolean)
+            .map(link => (
+              <a
+                key={link!.label}
+                href={link!.href}
+                target="_blank"
+                rel="noreferrer"
+                className="transition-opacity hover:opacity-75"
+                style={{
+                  ...cp(500, 11, '0.08em'),
+                  color: '#00E5FF',
+                  border: '1px solid rgba(0,229,255,0.2)',
+                  borderRadius: 6,
+                  padding: '4px 12px',
+                }}
+              >
+                {link!.label} ↗
+              </a>
+            ))}
         </div>
       </Section>
     </div>

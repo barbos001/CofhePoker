@@ -5,7 +5,7 @@ import { HandEvaluation, PayoutResult } from '@/lib/poker';
 export type AppState    = 'landing' | 'connecting' | 'app';
 export type Tab         = 'play' | 'history' | 'help' | 'settings';
 export type GameMode    = 'three-card' | 'holdem';
-export type PlayState   = 'lobby' | 'dealing' | 'decrypting' | 'playerTurn' | 'folding' | 'botThinking' | 'showdown' | 'result';
+export type PlayState   = 'lobby' | 'dealing' | 'decrypting' | 'playerTurn' | 'folding' | 'botThinking' | 'showdown' | 'result' | 'confirmAction';
 export type PermitState = 'none' | 'signing' | 'active' | 'expiring' | 'expired' | 'error';
 
 export interface HandHistory {
@@ -41,6 +41,11 @@ interface GameStore {
 
   address:    string | null;
   setAddress: (addr: string | null) => void;
+
+  sessionStartedAt: number | null;
+  lastDecryptAt:    number | null;
+  setSessionStartedAt: (t: number | null) => void;
+  setLastDecryptAt:    (t: number | null) => void;
 
   permitStatus:           PermitState;
   permitError:            string | null;
@@ -97,6 +102,11 @@ export const useGameStore = create<GameStore>()(persist((set, get) => ({
 
   address:    null,
   setAddress: (addr) => set({ address: addr }),
+
+  sessionStartedAt: null,
+  lastDecryptAt:    null,
+  setSessionStartedAt: (t) => set({ sessionStartedAt: t }),
+  setLastDecryptAt:    (t) => set({ lastDecryptAt: t }),
 
   permitStatus:           'none',
   permitError:            null,
@@ -213,9 +223,11 @@ export const useGameStore = create<GameStore>()(persist((set, get) => ({
 }), {
   name: 'cofhe-poker-game',
   partialize: (state) => ({
+    appState:               state.appState === 'connecting' ? 'app' : state.appState,
     tableId:                state.tableId,
     gameMode:               state.gameMode,
     activeTab:              state.activeTab,
     hasSeenPermitExplainer: state.hasSeenPermitExplainer,
+    sessionStartedAt:       state.sessionStartedAt,
   }),
 }));

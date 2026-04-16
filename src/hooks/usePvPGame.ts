@@ -1,7 +1,7 @@
 /**
  * usePvPGame — PvP game action hook (mirrors useGameActions for PvE).
  */
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { useAccount, useWriteContract, usePublicClient } from 'wagmi';
 import { PVP_CONTRACT_ADDRESS, CIPHER_POKER_PVP_ABI, PvPState } from '@/config/contractPvP';
 import { usePvPGameStore } from '@/store/usePvPGameStore';
@@ -37,6 +37,7 @@ export const usePvPGame = () => {
 
   const deployed  = PVP_CONTRACT_ADDRESS !== '0x0000000000000000000000000000000000000000';
   const isOnChain = isConnected && deployed;
+  const actingRef = useRef(false);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const writeAndWait = useCallback(async (fnName: string, args: any): Promise<`0x${string}`> => {
@@ -59,7 +60,8 @@ export const usePvPGame = () => {
   }, [publicClient, address]);
 
   const startPvPHand = useCallback(async () => {
-    if (!isOnChain || !store.tableId) return;
+    if (!isOnChain || !store.tableId || actingRef.current) return;
+    actingRef.current = true;
     const tableId = BigInt(store.tableId);
 
     try {
@@ -129,11 +131,14 @@ export const usePvPGame = () => {
       GAME('FAILED:', err instanceof Error ? err.message : err);
       store.setStatus('Error — try again.', '#FF3B3B');
       store.setPvPState('seated');
+    } finally {
+      actingRef.current = false;
     }
   }, [isOnChain, store, writeAndWait, publicClient, address, decryptCard, readBalance]);
 
   const pvpAct = useCallback(async (plays: boolean) => {
-    if (!isOnChain || !store.tableId) return;
+    if (!isOnChain || !store.tableId || actingRef.current) return;
+    actingRef.current = true;
     const tableId = BigInt(store.tableId);
 
     try {
@@ -161,30 +166,39 @@ export const usePvPGame = () => {
       }
 
       if (state === PvPState.AWAITING_SHOWDOWN) {
-        // Both played → showdown
+        // Both played → showdown. Only player1 resolves to avoid duplicate TXs.
         GAME('Both played → showdown');
         store.setPvPState('showdown');
         store.setStatus('Determining winner (FHE)…', '#B366FF');
 
-        const ready = await pollUntilTrue('pvp showdown', () =>
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          publicClient!.readContract({
+        if (store.isPlayer1) {
+          const ready = await pollUntilTrue('pvp showdown', () =>
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            publicClient!.readContract({
+              address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
+              functionName: 'isPvPShowdownReady', args: [tableId],
+            } as any) as Promise<boolean>
+          );
+          if (!ready) { store.setStatus('Showdown timed out.', '#FF3B3B'); return; }
+          store.setStatus('Revealing winner…', '#B366FF');
+          const resolveHash = await writeAndWait('resolvePvPShowdown', {
             address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
-            functionName: 'isPvPShowdownReady', args: [tableId],
-          } as any) as Promise<boolean>
-        );
-
-        if (!ready) {
-          store.setStatus('Showdown timed out.', '#FF3B3B');
-          return;
+            functionName: 'resolvePvPShowdown', args: [tableId],
+          });
+          await _finishHand(tableId, resolveHash);
+        } else {
+          // Player2 just waits for P1 to resolve, then reads the result
+          const complete = await pollUntilTrue('pvp complete (p2 wait)', async () => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const i = await publicClient!.readContract({
+              address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
+              functionName: 'getPvPTableInfo', args: [tableId],
+            } as any) as [string, string, number, bigint, bigint, bigint, boolean, bigint];
+            return i[2] === PvPState.COMPLETE;
+          });
+          if (!complete) { store.setStatus('Showdown timed out.', '#FF3B3B'); return; }
+          await _finishHand(tableId, txHash);
         }
-
-        store.setStatus('Revealing winner…', '#B366FF');
-        const resolveHash = await writeAndWait('resolvePvPShowdown', {
-          address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
-          functionName: 'resolvePvPShowdown', args: [tableId],
-        });
-        await _finishHand(tableId, resolveHash);
         return;
       }
 
@@ -215,25 +229,41 @@ export const usePvPGame = () => {
         store.setPvPState('showdown');
         store.setStatus('Determining winner (FHE)…', '#B366FF');
 
-        await pollUntilTrue('pvp showdown', () =>
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          publicClient!.readContract({
+        // Only player1 resolves to avoid both players submitting the TX
+        if (store.isPlayer1) {
+          await pollUntilTrue('pvp showdown', () =>
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            publicClient!.readContract({
+              address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
+              functionName: 'isPvPShowdownReady', args: [tableId],
+            } as any) as Promise<boolean>
+          );
+          store.setStatus('Revealing winner…', '#B366FF');
+          const rHash = await writeAndWait('resolvePvPShowdown', {
             address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
-            functionName: 'isPvPShowdownReady', args: [tableId],
-          } as any) as Promise<boolean>
-        );
-
-        const rHash = await writeAndWait('resolvePvPShowdown', {
-          address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
-          functionName: 'resolvePvPShowdown', args: [tableId],
-        });
-        await _finishHand(tableId, rHash);
+            functionName: 'resolvePvPShowdown', args: [tableId],
+          });
+          await _finishHand(tableId, rHash);
+        } else {
+          const complete = await pollUntilTrue('pvp complete (p2 wait)', async () => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const i = await publicClient!.readContract({
+              address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
+              functionName: 'getPvPTableInfo', args: [tableId],
+            } as any) as [string, string, number, bigint, bigint, bigint, boolean, bigint];
+            return i[2] === PvPState.COMPLETE;
+          });
+          if (!complete) { store.setStatus('Showdown timed out.', '#FF3B3B'); return; }
+          await _finishHand(tableId, txHash);
+        }
       }
 
     } catch (err) {
       console.error('[pvpAct]', err);
       GAME('FAILED:', err instanceof Error ? err.message : err);
       store.setStatus('Transaction failed.', '#FF3B3B');
+    } finally {
+      actingRef.current = false;
     }
   }, [isOnChain, store, writeAndWait, publicClient, address, decryptPublicCard, readBalance]);
 

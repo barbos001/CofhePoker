@@ -1,9 +1,19 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { History } from 'lucide-react';
 import { useGameStore, HandHistory } from '@/store/useGameStore';
 import { Card } from '@/components/ui/Card';
 import { StatsBar } from '@/components/ui/StatsBar';
 import { HandReplayModal } from '@/components/ui/HandReplayModal';
+
+// ─── Typography helpers ───────────────────────────────────────────────────────
+
+const cp = (weight: number, size: number, spacing = '0.03em') => ({
+  fontFamily: "'Chakra Petch', sans-serif",
+  fontWeight: weight,
+  fontSize: size,
+  letterSpacing: spacing,
+});
 
 // ─── Single hand row ──────────────────────────────────────────────────────────
 
@@ -23,48 +33,64 @@ const HistoryRow = ({
   const isPush = hand.result === 'PUSH';
 
   const resultColor =
-    isWin  ? 'var(--color-primary)' :
-    isPush ? '#888' :
-    isFold ? 'var(--color-text-secondary)' :
-             'var(--color-danger)';
+    isWin  ? '#00FF78' :
+    isPush ? 'rgba(255,255,255,0.4)' :
+    isFold ? 'rgba(255,255,255,0.3)' :
+             '#FF4444';
+
+  const deltaColor = hand.delta > 0 ? '#00FF78' : '#FF4444';
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 12 }}
+      initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.04 }}
-      style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}
+      style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
     >
       {/* Summary row */}
       <div
-        className="flex items-center py-4 cursor-pointer px-3 transition-all rounded-lg gap-3"
+        className="flex items-center py-3.5 cursor-pointer px-4 rounded-lg gap-3 transition-colors"
         onClick={() => setExpanded(!expanded)}
-        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.04)')}
+        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.03)')}
         onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
         style={{ background: 'transparent' }}
       >
-        <div className="font-mono text-xs min-w-[40px]" style={{ color: 'var(--color-text-dark)' }}>
+        {/* Hand id */}
+        <span style={{ ...cp(400, 12, '0.05em'), color: 'rgba(255,255,255,0.2)', minWidth: 36 }}>
           #{hand.id}
-        </div>
-        <div
-          className="font-mono text-xs font-bold min-w-[56px] tracking-wider uppercase"
-          style={{ color: resultColor }}
+        </span>
+
+        {/* Result badge */}
+        <span
+          className="uppercase"
+          style={{
+            ...cp(600, 11, '0.1em'),
+            color: resultColor,
+            background: `${resultColor}12`,
+            border: `1px solid ${resultColor}30`,
+            borderRadius: 999,
+            padding: '2px 8px',
+            minWidth: 56,
+            textAlign: 'center',
+          }}
         >
           {hand.result}
-        </div>
-        <div className="font-satoshi text-sm flex-1 truncate pr-2" style={{ color: 'var(--color-text-secondary)' }}>
+        </span>
+
+        {/* Description */}
+        <span className="flex-1 truncate pr-2" style={{ ...cp(400, 13), color: 'rgba(255,255,255,0.55)' }}>
           {hand.playerEval?.name ?? hand.desc}
-        </div>
-        <div
-          className="font-mono text-sm font-bold"
-          style={{ color: hand.delta > 0 ? 'var(--color-primary)' : 'var(--color-danger)' }}
-        >
+        </span>
+
+        {/* Delta */}
+        <span style={{ ...cp(600, 14), color: deltaColor, minWidth: 48, textAlign: 'right' }}>
           {hand.delta > 0 ? '+' : ''}{hand.delta}
-        </div>
+        </span>
+
         <motion.span
           animate={{ rotate: expanded ? 180 : 0 }}
-          className="ml-1 text-xs shrink-0"
-          style={{ color: 'var(--color-text-muted)' }}
+          className="ml-1 shrink-0"
+          style={{ color: 'rgba(255,255,255,0.25)', fontSize: 11 }}
         >
           ▾
         </motion.span>
@@ -81,16 +107,17 @@ const HistoryRow = ({
             className="overflow-hidden"
           >
             <div
-              className="p-5 flex flex-col md:flex-row gap-6 items-center justify-center rounded-xl mx-2 mb-2"
+              className="mx-3 mb-3 p-5 flex flex-col md:flex-row gap-6 items-center justify-center"
               style={{
-                background: 'rgba(255,255,255,0.04)',
-                border:     '1px solid rgba(255,255,255,0.10)',
+                background: '#0F1318',
+                border: '1px solid rgba(0,229,255,0.10)',
+                borderRadius: 10,
               }}
             >
               {!isFold ? (
                 <>
                   <div className="flex flex-col items-center gap-2">
-                    <span className="font-mono text-[10px] tracking-widest uppercase" style={{ color: 'var(--color-text-muted)' }}>
+                    <span className="uppercase" style={{ ...cp(500, 10, '0.14em'), color: 'rgba(255,255,255,0.3)' }}>
                       You — {hand.playerEval?.name ?? ''}
                     </span>
                     <div className="flex gap-1 transform scale-75 origin-top">
@@ -99,9 +126,9 @@ const HistoryRow = ({
                   </div>
                   {hand.botCards.length > 0 && (
                     <>
-                      <div className="font-mono text-sm" style={{ color: 'var(--color-text-dark)' }}>vs</div>
+                      <span style={{ ...cp(400, 13), color: 'rgba(255,255,255,0.2)' }}>vs</span>
                       <div className="flex flex-col items-center gap-2">
-                        <span className="font-mono text-[10px] tracking-widest uppercase" style={{ color: 'var(--color-text-muted)' }}>
+                        <span className="uppercase" style={{ ...cp(500, 10, '0.14em'), color: 'rgba(255,255,255,0.3)' }}>
                           Bot — {hand.botEval?.name ?? ''}
                         </span>
                         <div className="flex gap-1 transform scale-75 origin-top">
@@ -112,34 +139,34 @@ const HistoryRow = ({
                   )}
                 </>
               ) : (
-                <div className="font-mono text-xs py-4" style={{ color: 'var(--color-text-muted)' }}>
+                <span style={{ ...cp(400, 13), color: 'rgba(255,255,255,0.3)' }}>
                   Hand folded. Cards encrypted forever.
-                </div>
+                </span>
               )}
 
               {/* Actions */}
-              <div className="w-full md:w-auto md:ml-auto flex flex-col items-end gap-2">
-                {/* REPLAY button */}
+              <div className="w-full md:w-auto md:ml-auto flex flex-col items-end gap-2.5">
                 {!isFold && hand.playerCards.length > 0 && (
                   <button
                     onClick={e => { e.stopPropagation(); onReplay(hand); }}
-                    className="font-mono text-[10px] tracking-widest uppercase px-4 py-1.5 rounded-full transition-all hover:brightness-110"
+                    className="uppercase transition-colors"
                     style={{
-                      color:      'var(--color-fhe)',
-                      border:     '1px solid rgba(179,102,255,0.25)',
-                      background: 'rgba(179,102,255,0.06)',
+                      ...cp(600, 11, '0.1em'),
+                      color: '#B366FF',
+                      border: '1px solid rgba(179,102,255,0.3)',
+                      background: 'rgba(179,102,255,0.07)',
+                      borderRadius: 6,
+                      padding: '4px 14px',
                     }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(179,102,255,0.15)'; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(179,102,255,0.07)'; }}
                   >
                     ▶ REPLAY
                   </button>
                 )}
-                <a
-                  href="#"
-                  className="font-mono text-[10px] transition-colors hover:text-white"
-                  style={{ color: 'var(--color-text-dark)' }}
-                >
+                <span style={{ ...cp(400, 11, '0.04em'), color: 'rgba(255,255,255,0.2)' }}>
                   tx: {hand.txHash.substring(0, 10)}…
-                </a>
+                </span>
               </div>
             </div>
           </motion.div>
@@ -156,28 +183,102 @@ export const HistoryTab = () => {
   const [replayHand, setReplayHand] = useState<HandHistory | null>(null);
 
   return (
-    <div className="w-full max-w-[900px] mx-auto py-10 px-4 min-h-[calc(100vh-112px)]">
-      <h1 className="font-clash text-[48px] uppercase tracking-tight mb-6">HANDS</h1>
+    <div
+      className="w-full max-w-[900px] mx-auto py-10 px-4 min-h-[calc(100vh-112px)]"
+      style={{ background: '#0A0D12' }}
+    >
+      {/* Page title */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex items-center gap-4 mb-8"
+      >
+        <h1
+          className="uppercase leading-none"
+          style={{ ...cp(700, 52, '0.06em'), color: 'white' }}
+        >
+          HISTORY
+        </h1>
+        {history.length > 0 && (
+          <span
+            style={{
+              ...cp(400, 12),
+              color: 'rgba(255,255,255,0.5)',
+              background: 'rgba(255,255,255,0.06)',
+              borderRadius: 6,
+              padding: '3px 10px',
+            }}
+          >
+            {history.length} hands
+          </span>
+        )}
+      </motion.div>
 
-      {/* Rich stats bar */}
+      {/* Stats bar */}
       <StatsBar />
 
       {history.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-24 text-center">
-          <div className="text-5xl mb-4" style={{ color: 'var(--color-text-dark)' }}>♠</div>
-          <div className="font-mono text-sm mb-6" style={{ color: 'var(--color-text-muted)' }}>
+        /* Empty state */
+        <div className="flex flex-col items-center justify-center py-24 gap-4">
+          <History size={40} strokeWidth={1} style={{ color: 'rgba(255,255,255,0.1)' }} />
+          <span style={{ ...cp(400, 14), color: 'rgba(255,255,255,0.3)' }}>
             No hands played yet.
-          </div>
+          </span>
           <button
             onClick={() => setActiveTab('play')}
-            className="font-mono text-sm font-bold tracking-wider flex items-center gap-2 transition-colors hover:text-primary"
-            style={{ color: 'var(--color-text-secondary)' }}
+            className="uppercase transition-colors"
+            style={{
+              ...cp(600, 12, '0.1em'),
+              color: '#00E5FF',
+              border: '1px solid rgba(0,229,255,0.25)',
+              background: 'rgba(0,229,255,0.07)',
+              borderRadius: 6,
+              padding: '6px 18px',
+              marginTop: 4,
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(0,229,255,0.14)'; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(0,229,255,0.07)'; }}
           >
-            <span style={{ color: 'var(--color-primary)' }}>▶</span> PLAY →
+            PLAY NOW →
           </button>
         </div>
       ) : (
-        <div className="flex flex-col">
+        /* Hand list card */
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.08 }}
+          style={{
+            background: '#0F1318',
+            border: '1px solid rgba(0,229,255,0.12)',
+            borderRadius: 12,
+            boxShadow: '0 0 32px rgba(0,229,255,0.03)',
+            overflow: 'hidden',
+          }}
+        >
+          {/* Column header */}
+          <div
+            className="flex items-center gap-3 px-4 py-3"
+            style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+          >
+            {['#', 'Result', 'Hand', 'Δ Chips'].map((h, i) => (
+              <span
+                key={h}
+                className="uppercase"
+                style={{
+                  ...cp(500, 10, '0.15em'),
+                  color: 'rgba(255,255,255,0.25)',
+                  minWidth: i === 0 ? 36 : i === 1 ? 56 : i === 3 ? 48 : undefined,
+                  flex: i === 2 ? 1 : undefined,
+                  textAlign: i === 3 ? 'right' : undefined,
+                }}
+              >
+                {h}
+              </span>
+            ))}
+            <span style={{ minWidth: 20 }} />
+          </div>
+
           {history.map((hand, i) => (
             <HistoryRow
               key={hand.id}
@@ -186,7 +287,7 @@ export const HistoryTab = () => {
               onReplay={setReplayHand}
             />
           ))}
-        </div>
+        </motion.div>
       )}
 
       {/* Replay modal */}

@@ -14,6 +14,7 @@ export const useLobby = () => {
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
   const pollRef = useRef<ReturnType<typeof setInterval>>(null);
+  const busyRef = useRef(false);
 
   const deployed = PVP_CONTRACT_ADDRESS !== '0x0000000000000000000000000000000000000000';
 
@@ -70,71 +71,91 @@ export const useLobby = () => {
   }, [deployed, refresh]);
 
   const createTable = useCallback(async (buyIn: number, isPrivate: boolean) => {
-    if (!deployed) throw new Error('PvP contract not deployed');
-    LOG(`Creating table — buyIn: ${buyIn}, private: ${isPrivate}`);
-    const hash = await writeContractAsync({
-      address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
-      functionName: 'createPvPTable', args: [BigInt(buyIn), isPrivate],
-    } as any);
-    await publicClient!.waitForTransactionReceipt({ hash });
+    if (!deployed || busyRef.current) throw new Error(busyRef.current ? 'Already processing' : 'PvP contract not deployed');
+    busyRef.current = true;
+    try {
+      LOG(`Creating table — buyIn: ${buyIn}, private: ${isPrivate}`);
+      const hash = await writeContractAsync({
+        address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
+        functionName: 'createPvPTable', args: [BigInt(buyIn), isPrivate],
+      } as any);
+      await publicClient!.waitForTransactionReceipt({ hash });
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const seatId = await publicClient!.readContract({
-      address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
-      functionName: 'getMySeat', account: address,
-    } as any) as bigint;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const seatId = await publicClient!.readContract({
+        address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
+        functionName: 'getMySeat', account: address,
+      } as any) as bigint;
 
-    const tableId = Number(seatId);
-    LOG(`Table #${tableId} created ✓`);
+      const tableId = Number(seatId);
+      LOG(`Table #${tableId} created ✓`);
 
-    pvpStore.setTableId(tableId);
-    pvpStore.setPvPState('waiting');
-    pvpStore.setStatus(isPrivate ? 'Waiting — share invite link' : 'Waiting for opponent…', '#B366FF');
+      pvpStore.setTableId(tableId);
+      pvpStore.setPvPState('waiting');
+      pvpStore.setStatus(isPrivate ? 'Waiting — share invite link' : 'Waiting for opponent…', '#B366FF');
 
-    await refresh();
-    return tableId;
+      await refresh();
+      return tableId;
+    } finally {
+      busyRef.current = false;
+    }
   }, [deployed, writeContractAsync, publicClient, address, pvpStore, refresh]);
 
   const joinTable = useCallback(async (tableId: number) => {
-    if (!deployed) throw new Error('PvP contract not deployed');
-    LOG(`Joining table #${tableId}`);
-    const hash = await writeContractAsync({
-      address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
-      functionName: 'joinTable', args: [BigInt(tableId)],
-    } as any);
-    await publicClient!.waitForTransactionReceipt({ hash });
-    LOG(`Joined table #${tableId} ✓`);
+    if (!deployed || busyRef.current) throw new Error(busyRef.current ? 'Already processing' : 'PvP contract not deployed');
+    busyRef.current = true;
+    try {
+      LOG(`Joining table #${tableId}`);
+      const hash = await writeContractAsync({
+        address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
+        functionName: 'joinTable', args: [BigInt(tableId)],
+      } as any);
+      await publicClient!.waitForTransactionReceipt({ hash });
+      LOG(`Joined table #${tableId} ✓`);
 
-    pvpStore.setTableId(tableId);
-    pvpStore.setPvPState('seated');
-    pvpStore.setStatus('Both seated — ready to play!', '#39FF14');
-    await refresh();
+      pvpStore.setTableId(tableId);
+      pvpStore.setPvPState('seated');
+      pvpStore.setStatus('Both seated — ready to play!', '#39FF14');
+      await refresh();
+    } finally {
+      busyRef.current = false;
+    }
   }, [deployed, writeContractAsync, publicClient, pvpStore, refresh]);
 
   const joinByInvite = useCallback(async (tableId: number, code: `0x${string}`) => {
-    if (!deployed) throw new Error('PvP contract not deployed');
-    LOG(`Joining table #${tableId} by invite`);
-    const hash = await writeContractAsync({
-      address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
-      functionName: 'joinByInviteCode', args: [BigInt(tableId), code],
-    } as any);
-    await publicClient!.waitForTransactionReceipt({ hash });
+    if (!deployed || busyRef.current) throw new Error(busyRef.current ? 'Already processing' : 'PvP contract not deployed');
+    busyRef.current = true;
+    try {
+      LOG(`Joining table #${tableId} by invite`);
+      const hash = await writeContractAsync({
+        address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
+        functionName: 'joinByInviteCode', args: [BigInt(tableId), code],
+      } as any);
+      await publicClient!.waitForTransactionReceipt({ hash });
 
-    pvpStore.setTableId(tableId);
-    pvpStore.setPvPState('seated');
-    await refresh();
+      pvpStore.setTableId(tableId);
+      pvpStore.setPvPState('seated');
+      await refresh();
+    } finally {
+      busyRef.current = false;
+    }
   }, [deployed, writeContractAsync, publicClient, pvpStore, refresh]);
 
   const leaveTable = useCallback(async () => {
-    if (!deployed || !pvpStore.tableId) return;
-    LOG(`Leaving table #${pvpStore.tableId}`);
-    const hash = await writeContractAsync({
-      address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
-      functionName: 'leaveTable', args: [BigInt(pvpStore.tableId)],
-    } as any);
-    await publicClient!.waitForTransactionReceipt({ hash });
-    pvpStore.resetToIdle();
-    await refresh();
+    if (!deployed || !pvpStore.tableId || busyRef.current) return;
+    busyRef.current = true;
+    try {
+      LOG(`Leaving table #${pvpStore.tableId}`);
+      const hash = await writeContractAsync({
+        address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
+        functionName: 'leaveTable', args: [BigInt(pvpStore.tableId)],
+      } as any);
+      await publicClient!.waitForTransactionReceipt({ hash });
+      pvpStore.resetToIdle();
+      await refresh();
+    } finally {
+      busyRef.current = false;
+    }
   }, [deployed, writeContractAsync, publicClient, pvpStore, refresh]);
 
   return {

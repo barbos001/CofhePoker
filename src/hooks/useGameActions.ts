@@ -58,6 +58,8 @@ export const useGameActions = () => {
   // Store ctHashes for retry after FHE failure
   const pendingCtHashes = useRef<[bigint, bigint, bigint] | null>(null);
   const pendingTableId  = useRef<bigint | null>(null);
+  const actingRef       = useRef(false);
+  const pendingTxFn     = useRef<(() => Promise<void>) | null>(null);
 
   /** Write a contract function and wait for the transaction to be mined. */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -219,6 +221,7 @@ export const useGameActions = () => {
     }
 
     // All 3 decrypted — move to player turn
+    store.setLastDecryptAt(Date.now());
     pendingCtHashes.current = null;
     store.setPlayState('playerTurn');
     store.setStatus('Your turn — PLAY or FOLD', '#FFE03D');
@@ -245,7 +248,8 @@ export const useGameActions = () => {
   }, [_decryptAndReveal, store]);
 
   const startHand = useCallback(async () => {
-    if (!isOnChain || !publicClient) return;
+    if (!isOnChain || !publicClient || actingRef.current) return;
+    actingRef.current = true;
 
     try {
       await ensurePermit();
@@ -362,16 +366,20 @@ export const useGameActions = () => {
         store.setStatus('Error — please try again.', '#FF3B3B');
         store.setPlayState('lobby');
       }
+    } finally {
+      actingRef.current = false;
     }
   }, [isOnChain, store, writeAndWait, publicClient, getChainTableId, readBalance, _decryptAndReveal, address, getTableState, foldStuckHand, isPermitError]);
 
   const play = useCallback(async () => {
-    if (!isOnChain) return;
+    if (!isOnChain || actingRef.current) return;
+    actingRef.current = true;
 
     try {
       const tableId = BigInt(store.tableId!);
       GAME('Player PLAYS — placing bet…');
 
+      // TX1 — place bet (1 wallet signature)
       store.setStatus('Placing bet…', '#FFF');
       await writeAndWait('play', {
         address: CONTRACT_ADDRESS, abi: CIPHER_POKER_ABI,
@@ -380,10 +388,8 @@ export const useGameActions = () => {
 
       store.setPlayState('botThinking');
       store.setStatus('Bot evaluating hand (FHE)…', '#888888');
-      GAME('Fetching bot-decision ciphertext handle…');
 
-      // Step 1 — read the ciphertext handle the bot-decision ebool was stored under
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // FHE decrypt — no wallet signature
       const botHandle = await publicClient!.readContract({
         address: CONTRACT_ADDRESS, abi: CIPHER_POKER_ABI,
         functionName: 'getBotDecryptHandle', args: [tableId],
@@ -391,58 +397,62 @@ export const useGameActions = () => {
       } as any) as bigint;
       GAME(`Bot handle: ${botHandle.toString().slice(0, 12)}…`);
 
-      // Step 2 — ask the FHE network to decrypt (decryptForTx, no user permit needed)
-      store.setStatus('FHE network decrypting bot decision…', '#888888');
+      store.setStatus('FHE decrypting bot decision…', '#888888');
       const { result: botResult, signature: botSig } = await decryptForTx(botHandle);
       GAME(`Bot decryptForTx → result=${botResult}`);
 
-      // Step 3 — submit result + FHE-network signature; contract verifies on-chain
-      store.setStatus('Resolving bot decision…', '#B366FF');
-      const resolveBotHash = await writeAndWait('resolveBotDecision', {
-        address: CONTRACT_ADDRESS, abi: CIPHER_POKER_ABI,
-        functionName: 'resolveBotDecision', args: [tableId, botResult, botSig],
-      });
+      // Queue TX2 — user must click to send next signature
+      pendingTxFn.current = async () => {
+        store.setStatus('Resolving bot decision…', '#B366FF');
+        const resolveBotHash = await writeAndWait('resolveBotDecision', {
+          address: CONTRACT_ADDRESS, abi: CIPHER_POKER_ABI,
+          functionName: 'resolveBotDecision', args: [tableId, botResult, botSig],
+        });
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const [, newState] = await publicClient!.readContract({
-        address: CONTRACT_ADDRESS, abi: CIPHER_POKER_ABI,
-        functionName: 'getTableInfo', args: [tableId],
-        account: address,
-      } as any) as [string, number, bigint, bigint];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const [, newState] = await publicClient!.readContract({
+          address: CONTRACT_ADDRESS, abi: CIPHER_POKER_ABI,
+          functionName: 'getTableInfo', args: [tableId],
+          account: address,
+        } as any) as [string, number, bigint, bigint];
 
-      if (newState === GameState.COMPLETE) {
-        // Bot folded — player wins
-        GAME('Bot FOLDED → player wins');
-        await _finishHand(tableId, 'botFolded', resolveBotHash);
-        return;
-      }
+        if (newState === GameState.COMPLETE) {
+          GAME('Bot FOLDED → player wins');
+          await _finishHand(tableId, 'botFolded', resolveBotHash);
+          return;
+        }
 
-      // Both played → showdown
-      GAME('Bot PLAYS → showdown');
-      store.setPlayState('showdown');
-      store.setStatus('FHE network decrypting showdown result…', '#B366FF');
+        // Both played — FHE decrypt showdown handle (no wallet)
+        GAME('Bot PLAYS → preparing showdown');
+        store.setPlayState('showdown');
+        store.setStatus('FHE decrypting showdown result…', '#B366FF');
 
-      // Step 1 — read showdown handle
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const showdownHandle = await publicClient!.readContract({
-        address: CONTRACT_ADDRESS, abi: CIPHER_POKER_ABI,
-        functionName: 'getShowdownDecryptHandle', args: [tableId],
-        account: address,
-      } as any) as bigint;
-      GAME(`Showdown handle: ${showdownHandle.toString().slice(0, 12)}…`);
+        const showdownHandle = await publicClient!.readContract({
+          address: CONTRACT_ADDRESS, abi: CIPHER_POKER_ABI,
+          functionName: 'getShowdownDecryptHandle', args: [tableId],
+          account: address,
+        } as any) as bigint;
+        GAME(`Showdown handle: ${showdownHandle.toString().slice(0, 12)}…`);
 
-      // Step 2 — decrypt
-      const { result: sdResult, signature: sdSig } = await decryptForTx(showdownHandle);
-      GAME(`Showdown decryptForTx → result=${sdResult}`);
+        const { result: sdResult, signature: sdSig } = await decryptForTx(showdownHandle);
+        GAME(`Showdown decryptForTx → result=${sdResult}`);
 
-      // Step 3 — submit
-      store.setStatus('Revealing winner…', '#B366FF');
-      const resolveShowdownHash = await writeAndWait('resolveShowdown', {
-        address: CONTRACT_ADDRESS, abi: CIPHER_POKER_ABI,
-        functionName: 'resolveShowdown', args: [tableId, sdResult, sdSig],
-      });
+        // Queue TX3 — user must click to send next signature
+        pendingTxFn.current = async () => {
+          store.setStatus('Revealing winner…', '#B366FF');
+          const resolveShowdownHash = await writeAndWait('resolveShowdown', {
+            address: CONTRACT_ADDRESS, abi: CIPHER_POKER_ABI,
+            functionName: 'resolveShowdown', args: [tableId, sdResult, sdSig],
+          });
+          await _finishHand(tableId, 'showdown', resolveShowdownHash);
+        };
 
-      await _finishHand(tableId, 'showdown', resolveShowdownHash);
+        store.setPlayState('confirmAction');
+        store.setStatus('FHE ready — tap REVEAL WINNER', '#FFE03D');
+      };
+
+      store.setPlayState('confirmAction');
+      store.setStatus('Bot ready — tap CONFIRM', '#FFE03D');
 
     } catch (err) {
       console.error('[play]', err);
@@ -453,11 +463,35 @@ export const useGameActions = () => {
       } else {
         store.setStatus('Transaction failed. Try again.', '#FF3B3B');
       }
+    } finally {
+      actingRef.current = false;
     }
   }, [isOnChain, store, writeAndWait, publicClient, _finishHand, address, isPermitError, decryptForTx]);
 
+  /** Execute the next queued transaction — called when user clicks CONFIRM/PROCEED in the UI. */
+  const confirmNext = useCallback(async () => {
+    if (!pendingTxFn.current || actingRef.current) return;
+    actingRef.current = true;
+    const fn = pendingTxFn.current;
+    pendingTxFn.current = null;
+    try {
+      await fn();
+    } catch (err) {
+      console.error('[confirmNext]', err);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (isPermitError(errMsg) || useGameStore.getState().permitStatus === 'expired') {
+        store.setStatus('Permit expired — re-sign your FHE permit, then retry.', '#FF8C42');
+      } else {
+        store.setStatus('Transaction failed. Try again.', '#FF3B3B');
+      }
+    } finally {
+      actingRef.current = false;
+    }
+  }, [store, isPermitError]);
+
   const fold = useCallback(async () => {
-    if (!isOnChain) return;
+    if (!isOnChain || actingRef.current) return;
+    actingRef.current = true;
 
     try {
       // Use pendingTableId if we're in a stuck decrypt state
@@ -479,8 +513,10 @@ export const useGameActions = () => {
       console.error('[fold]', err);
       GAME('fold FAILED:', err instanceof Error ? err.message : err);
       store.setStatus('Transaction failed. Try again.', '#FF3B3B');
+    } finally {
+      actingRef.current = false;
     }
   }, [isOnChain, store, writeAndWait, _finishHand]);
 
-  return { startHand, play, fold, retryDecrypt, isOnChain };
+  return { startHand, play, fold, retryDecrypt, confirmNext, isOnChain };
 };

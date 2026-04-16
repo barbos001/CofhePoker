@@ -14,6 +14,13 @@ import { FheProgressBar } from '@/components/ui/FheProgress';
 import { useGameGuards, PreFlightResult } from '@/hooks/useGameGuards';
 import { getCardData } from '@/lib/poker';
 
+const cp = (weight: number, size: number | string, spacing = '0.03em') => ({
+  fontFamily: "'Chakra Petch', sans-serif",
+  fontWeight: weight,
+  fontSize: size,
+  letterSpacing: spacing,
+});
+
 const STEPS = [
   { key: 'deal',    label: 'DEAL',     states: ['dealing', 'decrypting'] },
   { key: 'preflop', label: 'PRE-FLOP', states: ['playerTurn:preflop', 'botThinking:preflop'] },
@@ -388,8 +395,7 @@ const HoldemResultOverlay = () => {
         {/* Headline */}
         <div className="z-10 mb-6">
           {isWin && (
-            <div className="flex font-clash text-[80px] uppercase tracking-tighter"
-              style={{ color: 'var(--color-primary)', animation: 'counter-glow 2s ease-in-out infinite' }}>
+            <div className="flex uppercase" style={{ ...cp(700, 80, '0.06em'), color: '#FFE03D', animation: 'counter-glow 2s ease-in-out infinite' }}>
               {"WON".split('').map((char, i) => (
                 <motion.span key={i} initial={{ y: 30, rotateX: -90 }} animate={{ y: [30, -8, 0], rotateX: [-90, 10, 0] }}
                   transition={{ delay: i * 0.1, type: 'spring', stiffness: 200 }}>{char}</motion.span>
@@ -398,11 +404,11 @@ const HoldemResultOverlay = () => {
           )}
           {handResult === 'LOST' && (
             <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.5 }}
-              className="font-clash text-[56px] uppercase tracking-tighter" style={{ color: 'var(--color-text-dark)' }}>LOST</motion.div>
+              className="uppercase" style={{ ...cp(700, 64, '0.06em'), color: 'rgba(255,255,255,0.25)' }}>LOST</motion.div>
           )}
           {isFold && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-              className="font-satoshi font-bold text-2xl" style={{ color: 'var(--color-text-muted)' }}>FOLDED</motion.div>
+              className="uppercase" style={{ ...cp(600, 32, '0.08em'), color: 'rgba(255,255,255,0.45)' }}>FOLDED</motion.div>
           )}
         </div>
 
@@ -412,12 +418,12 @@ const HoldemResultOverlay = () => {
             {/* Player hand */}
             <motion.div className="flex flex-col items-center gap-3"
               initial={{ x: -30, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ delay: 0.2, duration: 0.5 }}>
-              <span className="font-mono text-xs tracking-widest uppercase" style={{ color: 'var(--color-text-secondary)' }}>Your hand</span>
+              <span className="uppercase" style={{ ...cp(500, 10, '0.14em'), color: 'rgba(255,255,255,0.4)' }}>Your hand</span>
               <div className="flex gap-2">
                 {playerCards.map((id, i) => <Card key={i} id={id} state={isWin ? 'winner' : 'faceUp'} />)}
               </div>
               {playerEval && (
-                <div className="font-satoshi font-bold text-lg" style={{ color: 'var(--color-primary)' }}>
+                <div style={{ ...cp(600, 15, '0.04em'), color: '#FFE03D' }}>
                   <HandNameScramble name={playerEval.name} />
                 </div>
               )}
@@ -427,7 +433,7 @@ const HoldemResultOverlay = () => {
             {communityCards.length > 0 && (
               <motion.div className="flex flex-col items-center gap-3"
                 initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.3 }}>
-                <span className="font-mono text-xs tracking-widest uppercase" style={{ color: 'var(--color-primary)' }}>Community</span>
+                <span className="uppercase" style={{ ...cp(500, 10, '0.14em'), color: '#00BFFF' }}>Community</span>
                 <div className="flex gap-2">
                   {communityCards.map((id, i) => <Card key={i} id={id} state="faceUp" />)}
                 </div>
@@ -437,7 +443,7 @@ const HoldemResultOverlay = () => {
             {/* Bot hand */}
             <motion.div className="flex flex-col items-center gap-3"
               initial={{ x: 30, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ delay: 0.4, duration: 0.5 }}>
-              <span className="font-mono text-xs tracking-widest uppercase" style={{ color: 'var(--color-text-secondary)' }}>Bot</span>
+              <span className="uppercase" style={{ ...cp(500, 10, '0.14em'), color: 'rgba(255,255,255,0.4)' }}>Bot</span>
               <div className="flex gap-2">
                 {botCards.length > 0
                   ? botCards.map((id, i) => <Card key={i} id={id} state={!isWin ? 'winner' : 'faceUp'} />)
@@ -445,7 +451,7 @@ const HoldemResultOverlay = () => {
                 }
               </div>
               {botEval && (
-                <div className="font-satoshi font-bold text-lg" style={{ color: 'var(--color-text-secondary)' }}>
+                <div style={{ ...cp(500, 14, '0.04em'), color: 'rgba(255,255,255,0.5)' }}>
                   {botEval.name}
                 </div>
               )}
@@ -455,12 +461,34 @@ const HoldemResultOverlay = () => {
 
         {/* Stats + buttons */}
         <div className="flex flex-col items-center gap-4 z-10">
-          <div className="font-mono text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-            Balance: {balance.toLocaleString()}
+          <div style={{ ...cp(400, 13), color: 'rgba(255,255,255,0.45)' }}>
+            Balance: <span style={{ color: 'white', fontWeight: 600 }}>{balance.toLocaleString()}</span>
           </div>
-          <PlayCTA onClick={resetToLobby} text="DEAL NEXT" className="text-xl" />
-          <button onClick={resetToLobby} className="font-mono text-xs transition-colors mt-2 hover:text-white"
-            style={{ color: 'var(--color-text-dark)' }}>Leave</button>
+          <button
+            onClick={resetToLobby}
+            className="uppercase transition-all"
+            style={{
+              ...cp(700, 13, '0.14em'),
+              height: 48, paddingLeft: 48, paddingRight: 48,
+              borderRadius: 10,
+              background: '#00BFFF',
+              color: '#000',
+              boxShadow: '0 0 28px rgba(0,191,255,0.35)',
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 0 40px rgba(0,191,255,0.55)'; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 0 28px rgba(0,191,255,0.35)'; }}
+          >
+            DEAL NEXT HAND
+          </button>
+          <button
+            onClick={resetToLobby}
+            className="uppercase transition-colors"
+            style={{ ...cp(400, 11, '0.1em'), color: 'rgba(255,255,255,0.25)', marginTop: 4 }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.6)'; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.25)'; }}
+          >
+            Leave Table
+          </button>
         </div>
       </motion.div>
     </motion.div>
@@ -469,13 +497,13 @@ const HoldemResultOverlay = () => {
 
 export const HoldemTab = () => {
   const { playState, statusMsg, pot, balance, playerCards, botCards, communityCards, history, holdemRound, playerEval } = useGameStore();
-  const { startHand, actPreflop, actFlop, actTurn, actRiver, callBot, fold, isOnChain } = useHoldemActions();
+  const { startHand, actPreflop, actFlop, actTurn, actRiver, callBot, fold, confirmNext, isOnChain } = useHoldemActions();
   const { isConnected } = useAccount();
   const contractDeployed = HOLDEM_CONTRACT_ADDRESS !== '0x0000000000000000000000000000000000000000';
   const { preflight, leaveGame, setFoldFn, turnTimeLeft, turnTimerActive } = useGameGuards();
 
   const isActive = playState !== 'lobby';
-  const isProcessing = ['dealing', 'decrypting', 'botThinking', 'showdown', 'folding'].includes(playState);
+  const isProcessing = ['dealing', 'decrypting', 'botThinking', 'folding'].includes(playState);
 
   // Detect waitingForCall from status message (set by hook when bot bets)
   const waitingForCall = statusMsg.text.includes('CALL or FOLD');
@@ -526,13 +554,16 @@ export const HoldemTab = () => {
 
   if (!isActive) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-112px)] py-12 relative overflow-hidden">
+      <div
+        className="flex flex-col items-center justify-center min-h-[calc(100vh-112px)] py-12 relative overflow-hidden"
+        style={{ background: '#0A0D12' }}
+      >
         {/* Ambient glow */}
         <div
           className="absolute pointer-events-none"
           style={{
             width: 600, height: 600, top: '30%', left: '50%', transform: 'translate(-50%, -50%)',
-            background: 'radial-gradient(circle, rgba(0,191,255,0.04) 0%, rgba(179,102,255,0.02) 40%, transparent 70%)',
+            background: 'radial-gradient(circle, rgba(0,191,255,0.05) 0%, rgba(179,102,255,0.03) 40%, transparent 70%)',
             animation: 'ambient-breathe 4s ease-in-out infinite',
           }}
         />
@@ -542,17 +573,25 @@ export const HoldemTab = () => {
           <XPBar handsPlayed={history.length} />
         </motion.div>
 
-        <motion.h1
+        <motion.div
           initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }}
-          className="font-clash text-[52px] md:text-[80px] leading-[0.9] tracking-tighter uppercase text-center mb-4 relative z-10"
+          className="text-center mb-3 relative z-10"
         >
-          <span>TEXAS</span><br />
-          <span style={{ color: '#00BFFF', animation: 'counter-glow 3s ease-in-out infinite' }}>HOLD'EM</span>
-        </motion.h1>
+          <h1 className="uppercase leading-none mb-1" style={{ ...cp(700, 'clamp(48px,8vw,80px)', '0.06em'), color: 'white' }}>
+            TEXAS
+          </h1>
+          <h1
+            className="uppercase leading-none"
+            style={{ ...cp(700, 'clamp(48px,8vw,80px)', '0.06em'), color: '#00BFFF', textShadow: '0 0 40px rgba(0,191,255,0.35)', animation: 'counter-glow 3s ease-in-out infinite' }}
+          >
+            HOLD'EM
+          </h1>
+        </motion.div>
 
         <motion.p
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.15 }}
-          className="font-mono text-xs tracking-widest uppercase mb-8 z-10" style={{ color: 'var(--color-text-muted)' }}
+          className="uppercase mb-8 z-10"
+          style={{ ...cp(400, 11, '0.18em'), color: 'rgba(255,255,255,0.35)' }}
         >
           2 Hole + 5 Community · 4 Rounds · FHE Encrypted
         </motion.p>
@@ -567,16 +606,23 @@ export const HoldemTab = () => {
         >
           <MagneticBtn
             onClick={handleStart}
-            className="font-clash text-xl tracking-widest uppercase px-14 py-4 rounded-full text-black font-bold relative overflow-hidden group"
-            style={{ background: '#00BFFF', animation: 'glow-yellow 2.5s ease-in-out infinite' }}
+            className="uppercase relative overflow-hidden"
+            style={{
+              ...cp(700, 14, '0.14em'),
+              height: 52, paddingLeft: 56, paddingRight: 56,
+              borderRadius: 12,
+              background: '#00BFFF',
+              color: '#000',
+              boxShadow: '0 0 32px rgba(0,191,255,0.4)',
+            }}
           >
-            <span className="relative z-10">DEAL</span>
+            <span className="relative z-10">DEAL CARDS</span>
           </MagneticBtn>
         </motion.div>
 
         <motion.div
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.45 }}
-          className="flex items-center gap-2 font-mono text-xs tracking-wider z-10" style={{ color: 'var(--color-text-muted)' }}
+          className="flex items-center gap-2 z-10" style={{ ...cp(400, 12, '0.06em'), color: 'rgba(255,255,255,0.4)' }}
         >
           <span className="w-2 h-2 rounded-full" style={{ background: '#00BFFF', boxShadow: '0 0 6px rgba(0,191,255,0.5)' }} />
           <AnimatedBalance value={balance} /> chips · SB: 5 / BB: 10
@@ -737,8 +783,9 @@ export const HoldemTab = () => {
           <div className="flex items-center gap-4 mb-4 md:mb-6 relative z-10">
             <div className="flex-1 h-px" style={{ background: 'linear-gradient(to right, transparent, rgba(0,191,255,0.15), transparent)' }} />
             <motion.div
-              className="px-6 py-2.5 rounded-full font-clash text-xl md:text-2xl tracking-wide relative overflow-hidden"
+              className="px-6 py-2.5 rounded-full relative overflow-hidden"
               style={{
+                ...cp(700, 22, '0.04em'),
                 background: 'rgba(0,0,0,0.35)',
                 border: playState === 'showdown' ? '1px solid rgba(0,191,255,0.5)' : '1px solid rgba(0,191,255,0.2)',
                 color: '#00BFFF',
@@ -784,7 +831,7 @@ export const HoldemTab = () => {
             {playerEval && holdemRound === 'flop' && playState === 'playerTurn' && (
               <motion.div
                 initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
-                className="font-satoshi font-bold text-sm" style={{ color: 'var(--color-primary)' }}
+                style={{ ...cp(600, 13, '0.05em'), color: '#FFE03D' }}
               >
                 <HandNameScramble name={playerEval.name} />
               </motion.div>
@@ -821,7 +868,20 @@ export const HoldemTab = () => {
 
       {/* Action buttons */}
       <div className="flex gap-3 mt-4 relative z-10">
-        {waitingForCall ? (
+        {playState === 'confirmAction' ? (
+          /* Queued TX — user must confirm to send next wallet signature */
+          <MagneticBtn
+            onClick={confirmNext}
+            className="h-12 px-12 rounded-full font-mono text-sm font-bold tracking-widest uppercase flex items-center gap-2 transition-all relative overflow-hidden"
+            style={{
+              background: '#00BFFF',
+              color: '#000',
+              boxShadow: '0 0 28px rgba(0,191,255,0.4)',
+            }}
+          >
+            PROCEED
+          </MagneticBtn>
+        ) : waitingForCall ? (
           /* Bot bet → player must CALL or FOLD */
           <>
             <MagneticBtn

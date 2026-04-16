@@ -3,9 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '@/store/useGameStore';
 import { useVaultStore } from '@/store/useVaultStore';
 import { VAULT_DEPLOYED } from '@/config/vault';
-import { PlayTab } from './PlayTab';
 import { HoldemTab } from './HoldemTab';
-import { PvPTab } from './PvPTab';
 import { HoldemPvPTab } from './HoldemPvPTab';
 
 type GameMode = '3card' | 'holdem' | null;
@@ -41,30 +39,67 @@ const ModeCard = ({
   title: string; subtitle: string; lines: string[]; accent: string; onClick: () => void;
 }) => (
   <motion.button
-    whileHover={{ scale: 1.03, y: -4 }}
+    whileHover={{ scale: 1.02, y: -6 }}
     whileTap={{ scale: 0.98 }}
     onClick={onClick}
-    className="flex-1 min-w-[240px] max-w-[340px] rounded-2xl p-6 text-left transition-all group relative overflow-hidden"
+    className="flex-1 min-w-[280px] max-w-[360px] rounded-xl p-8 text-left transition-all group relative overflow-hidden flex flex-col"
     style={{
-      background: 'rgba(255,255,255,0.06)',
-      border: `1.5px solid ${accent}40`,
+      background: `linear-gradient(145deg, ${accent}0C 0%, rgba(255,255,255,0.04) 100%)`,
+      border: `1.5px solid ${accent}35`,
+      minHeight: 320,
     }}
   >
+    {/* Hover glow */}
     <div
-      className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity"
-      style={{ background: `radial-gradient(circle at 50% 80%, ${accent}08 0%, transparent 70%)` }}
+      className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+      style={{ background: `radial-gradient(ellipse at 50% 100%, ${accent}14 0%, transparent 65%)` }}
     />
-    <div className="relative z-10">
-      <h3 className="font-clash text-2xl md:text-3xl tracking-tight uppercase mb-1" style={{ color: accent }}>
+    {/* Top accent line */}
+    <div
+      className="absolute top-0 left-8 right-8 h-[1px]"
+      style={{ background: `linear-gradient(90deg, transparent, ${accent}60, transparent)` }}
+    />
+    <div className="relative z-10 flex flex-col flex-1">
+      <h3
+        className="uppercase mb-1"
+        style={{
+          fontFamily: "'Chakra Petch', sans-serif",
+          fontWeight: 700,
+          fontSize: 28,
+          letterSpacing: '0.08em',
+          color: accent,
+          lineHeight: 1.1,
+        }}
+      >
         {title}
       </h3>
-      <p className="font-mono text-[10px] tracking-widest uppercase mb-4" style={{ color: 'var(--color-text-muted)' }}>
+      <p
+        className="uppercase mb-6"
+        style={{
+          fontFamily: "'Chakra Petch', sans-serif",
+          fontWeight: 400,
+          fontSize: 11,
+          letterSpacing: '0.14em',
+          color: 'rgba(255,255,255,0.35)',
+        }}
+      >
         {subtitle}
       </p>
-      <div className="space-y-1.5">
-        {lines.map((line, i) => (
-          <div key={i} className="flex items-center gap-2 font-mono text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>
-            <span style={{ color: accent }}>-</span> {line}
+      <div className="space-y-2.5 mt-auto">
+        {lines.filter(Boolean).map((line, i) => (
+          <div
+            key={i}
+            className="flex items-center gap-2.5"
+            style={{
+              fontFamily: "'Chakra Petch', sans-serif",
+              fontWeight: 400,
+              fontSize: 13,
+              letterSpacing: '0.03em',
+              color: 'rgba(255,255,255,0.55)',
+            }}
+          >
+            <span style={{ color: accent, fontSize: 8, opacity: 0.8 }}>◆</span>
+            {line}
           </div>
         ))}
       </div>
@@ -118,52 +153,70 @@ const OpponentSelect = ({
   const accent = mode === '3card' ? '#FFE03D' : '#00BFFF';
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[calc(100vh-112px)] py-12 px-4">
-      {/* Breadcrumb */}
-      <motion.button
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-        onClick={onBack}
-        className="flex items-center gap-2 mb-8 font-mono text-xs tracking-wider transition-colors hover:text-white"
-        style={{ color: 'var(--color-text-muted)' }}
-      >
-        <span>&#8592;</span> PLAY
-        <span style={{ color: 'rgba(255,255,255,0.2)' }}>/</span>
-        <span style={{ color: accent }}>{modeLabel}</span>
-      </motion.button>
+    <div
+      className="flex flex-col items-center justify-center min-h-[calc(100vh-112px)] px-4 relative overflow-hidden"
+      style={{ paddingTop: 48, paddingBottom: 48 }}
+    >
+      {/* Felt / dark-green ambient background */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background: 'radial-gradient(ellipse 80% 60% at 50% 50%, rgba(0,40,20,0.45) 0%, transparent 70%)',
+        }}
+      />
 
-      <motion.h2
-        initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-        className="font-clash text-[36px] md:text-[56px] leading-[0.9] tracking-tighter uppercase text-center mb-3"
-        style={{ color: accent }}
-      >
-        {modeLabel}
-      </motion.h2>
-      <motion.p
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }}
-        className="font-mono text-xs tracking-widest uppercase mb-12" style={{ color: 'var(--color-text-muted)' }}
-      >
-        Choose your opponent
-      </motion.p>
+      <div className="relative z-10 flex flex-col items-center w-full">
+        {/* Page title */}
+        <motion.h1
+          initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+          className="uppercase text-center mb-2"
+          style={{
+            fontFamily: "'Chakra Petch', sans-serif",
+            fontWeight: 700,
+            fontSize: 'clamp(36px, 6vw, 60px)',
+            letterSpacing: '0.08em',
+            color: accent,
+            textShadow: `0 0 40px ${accent}30`,
+            lineHeight: 1,
+          }}
+        >
+          {modeLabel}
+        </motion.h1>
 
-      <motion.div
-        initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
-        className="flex flex-col md:flex-row gap-4 md:gap-6 w-full max-w-[720px] justify-center"
-      >
-        <ModeCard
-          title="vs Bot"
-          subtitle="Play now"
-          lines={['Instant start', 'FHE-encrypted bot', 'No waiting']}
-          accent="var(--color-success)"
-          onClick={() => onSelect('bot')}
-        />
-        <ModeCard
-          title="vs Player"
-          subtitle="PvP"
-          lines={['Create or join a room', 'Invite friends', 'Real opponent']}
-          accent="var(--color-fhe)"
-          onClick={() => onSelect('pvp')}
-        />
-      </motion.div>
+        <motion.p
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.08 }}
+          className="uppercase mb-10"
+          style={{
+            fontFamily: "'Chakra Petch', sans-serif",
+            fontWeight: 400,
+            fontSize: 11,
+            letterSpacing: '0.18em',
+            color: 'rgba(255,255,255,0.3)',
+          }}
+        >
+          Choose your opponent
+        </motion.p>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }}
+          className="flex flex-col md:flex-row gap-5 w-full max-w-[740px] justify-center"
+        >
+          <ModeCard
+            title="VS BOT"
+            subtitle="Play now"
+            lines={['Instant start', 'FHE-encrypted bot', 'No waiting']}
+            accent="#00E86C"
+            onClick={() => onSelect('bot')}
+          />
+          <ModeCard
+            title="VS PLAYER"
+            subtitle="PvP"
+            lines={['Create or join a room', 'Invite friends', 'Real opponent']}
+            accent="#B366FF"
+            onClick={() => onSelect('pvp')}
+          />
+        </motion.div>
+      </div>
     </div>
   );
 };
@@ -181,71 +234,101 @@ const MoneyModeSelect = ({
   const accent    = mode === '3card' ? '#FFE03D' : '#00BFFF';
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[calc(100vh-112px)] py-12 px-4">
-      {/* Breadcrumb */}
-      <motion.button
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-        onClick={onBack}
-        className="flex items-center gap-2 mb-8 font-mono text-xs tracking-wider transition-colors hover:text-white"
-        style={{ color: 'var(--color-text-muted)' }}
-      >
-        <span>&#8592;</span> PLAY
-        <span style={{ color: 'rgba(255,255,255,0.2)' }}>/</span>
-        <span style={{ color: accent }}>{modeLabel}</span>
-        <span style={{ color: 'rgba(255,255,255,0.2)' }}>/</span>
-        <span>{oppLabel}</span>
-      </motion.button>
-
-      <motion.h2
-        initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-        className="font-clash text-[36px] md:text-[52px] leading-[0.9] tracking-tighter uppercase text-center mb-3"
-        style={{ color: 'white' }}
-      >
-        Choose Stakes
-      </motion.h2>
-      <motion.p
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }}
-        className="font-mono text-xs tracking-widest uppercase mb-12" style={{ color: 'var(--color-text-muted)' }}
-      >
-        How do you want to play?
-      </motion.p>
-
-      <motion.div
-        initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
-        className="flex flex-col md:flex-row gap-4 md:gap-6 w-full max-w-[720px] justify-center"
-      >
-        {/* Virtual chips */}
-        <ModeCard
-          title="Virtual Chips"
-          subtitle="Play for fun"
-          lines={['1 000 chips to start', 'No real money at stake', 'Instant play']}
-          accent="#FFE03D"
-          onClick={() => onSelect('virtual')}
-        />
-
-        {/* Real money */}
-        <ModeCard
-          title="Real Money"
-          subtitle={VAULT_DEPLOYED ? 'ETH / USDT via Vault' : 'Not available yet'}
-          lines={
-            VAULT_DEPLOYED
-              ? ['Deposit ETH or USDT', 'Winnings go to your vault', 'Withdraw anytime']
-              : ['Vault contract not deployed', 'Coming soon', '']
-          }
-          accent="var(--color-success)"
-          onClick={() => VAULT_DEPLOYED && onSelect('real')}
-        />
-      </motion.div>
-
-      {!VAULT_DEPLOYED && (
-        <motion.p
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}
-          className="mt-6 font-mono text-[10px] tracking-wider"
-          style={{ color: 'rgba(255,59,59,0.6)' }}
+    <div
+      className="flex flex-col items-center justify-center min-h-[calc(100vh-112px)] px-4 relative overflow-hidden"
+      style={{ paddingTop: 48, paddingBottom: 48 }}
+    >
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{ background: 'radial-gradient(ellipse 80% 60% at 50% 50%, rgba(0,40,20,0.45) 0%, transparent 70%)' }}
+      />
+      <div className="relative z-10 flex flex-col items-center w-full">
+        {/* Back breadcrumb */}
+        <motion.button
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+          onClick={onBack}
+          className="flex items-center gap-2 mb-8 uppercase transition-colors hover:text-white"
+          style={{
+            fontFamily: "'Chakra Petch', sans-serif",
+            fontWeight: 500,
+            fontSize: 11,
+            letterSpacing: '0.12em',
+            color: 'rgba(255,255,255,0.35)',
+          }}
         >
-          Real-money vault not yet deployed — virtual chips only
+          <span>←</span> {modeLabel}
+          <span style={{ color: 'rgba(255,255,255,0.15)' }}>/</span>
+          <span style={{ color: 'rgba(255,255,255,0.6)' }}>{oppLabel}</span>
+        </motion.button>
+
+        <motion.h1
+          initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+          className="uppercase text-center mb-2"
+          style={{
+            fontFamily: "'Chakra Petch', sans-serif",
+            fontWeight: 700,
+            fontSize: 'clamp(36px, 6vw, 60px)',
+            letterSpacing: '0.08em',
+            color: 'white',
+            lineHeight: 1,
+          }}
+        >
+          Choose Stakes
+        </motion.h1>
+        <motion.p
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.08 }}
+          className="uppercase mb-10"
+          style={{
+            fontFamily: "'Chakra Petch', sans-serif",
+            fontWeight: 400,
+            fontSize: 11,
+            letterSpacing: '0.18em',
+            color: 'rgba(255,255,255,0.3)',
+          }}
+        >
+          How do you want to play?
         </motion.p>
-      )}
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }}
+          className="flex flex-col md:flex-row gap-5 w-full max-w-[740px] justify-center"
+        >
+          <ModeCard
+            title="Virtual Chips"
+            subtitle="Play for fun"
+            lines={['1 000 chips to start', 'No real money at stake', 'Instant play']}
+            accent="#FFE03D"
+            onClick={() => onSelect('virtual')}
+          />
+          <ModeCard
+            title="Real Money"
+            subtitle={VAULT_DEPLOYED ? 'ETH / USDT via Vault' : 'Not available yet'}
+            lines={
+              VAULT_DEPLOYED
+                ? ['Deposit ETH or USDT', 'Winnings go to your vault', 'Withdraw anytime']
+                : ['Vault not deployed', 'Coming soon']
+            }
+            accent="#00E86C"
+            onClick={() => VAULT_DEPLOYED && onSelect('real')}
+          />
+        </motion.div>
+
+        {!VAULT_DEPLOYED && (
+          <motion.p
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}
+            className="mt-5"
+            style={{
+              fontFamily: "'Chakra Petch', sans-serif",
+              fontWeight: 400,
+              fontSize: 11,
+              letterSpacing: '0.06em',
+              color: 'rgba(255,59,59,0.55)',
+            }}
+          >
+            Real-money vault not yet deployed — virtual chips only
+          </motion.p>
+        )}
+      </div>
     </div>
   );
 };
@@ -272,10 +355,16 @@ const GameBreadcrumb = ({
     >
       <button
         onClick={onBack}
-        className="flex items-center gap-2 font-mono text-xs tracking-wider transition-colors hover:text-white"
-        style={{ color: 'var(--color-text-muted)' }}
+        className="flex items-center gap-2 uppercase transition-colors hover:text-white"
+        style={{
+          fontFamily: "'Chakra Petch', sans-serif",
+          fontWeight: 500,
+          fontSize: 11,
+          letterSpacing: '0.12em',
+          color: 'rgba(255,255,255,0.35)',
+        }}
       >
-        <span>&#8592;</span> PLAY
+        <span>←</span> PLAY
         <span style={{ color: 'rgba(255,255,255,0.2)' }}>/</span>
         <span style={{ color: accent }}>{modeLabel}</span>
         <span style={{ color: 'rgba(255,255,255,0.2)' }}>/</span>
@@ -301,7 +390,8 @@ function pushPlayState(mode: GameMode, opponent: Opponent, moneyMode: MoneyMode)
 export const PlayHub = () => {
   const { playState, activeTab } = useGameStore();
   const { setRealMoneyMode } = useVaultStore();
-  const [mode, setMode] = useState<GameMode>(null);
+  // Always Texas Hold'em — 3-Card mode removed
+  const mode: NonNullable<GameMode> = 'holdem';
   const [opponent, setOpponent] = useState<Opponent>(null);
   const [moneyMode, setMoneyMode] = useState<MoneyMode>(null);
   const suppressPush = useRef(false);
@@ -319,7 +409,6 @@ export const PlayHub = () => {
     }
     if (activeTab === 'play' && prevTabRef.current !== 'play' && !isInGame) {
       // Came back to play from another tab — reset
-      setMode(null);
       setOpponent(null);
       setMoneyMode(null);
     }
@@ -337,20 +426,13 @@ export const PlayHub = () => {
       const s = e.state as { playStep?: Step; mode?: GameMode; opponent?: Opponent } | null;
       suppressPush.current = true;
 
-      if (!s || !s.playStep || s.playStep === 'mode') {
-        setMode(null);
-        setOpponent(null);
-        setMoneyMode(null);
-      } else if (s.playStep === 'opponent') {
-        setMode(s.mode ?? null);
+      if (!s || !s.playStep || s.playStep === 'mode' || s.playStep === 'opponent') {
         setOpponent(null);
         setMoneyMode(null);
       } else if (s.playStep === 'money') {
-        setMode(s.mode ?? null);
         setOpponent(s.opponent ?? null);
         setMoneyMode(null);
       } else if (s.playStep === 'game') {
-        setMode(s.mode ?? null);
         setOpponent(s.opponent ?? null);
         setMoneyMode((s as { moneyMode?: MoneyMode }).moneyMode ?? null);
       }
@@ -368,24 +450,15 @@ export const PlayHub = () => {
   useEffect(() => {
     const parsed = parseRoomHash();
     if (parsed) {
-      // Auto-navigate to the right game mode + PvP (default virtual for room links)
-      setMode(parsed.gameType);
+      // Auto-navigate to PvP with virtual chips for room links
       setOpponent('pvp');
       setMoneyMode('virtual');
       setRealMoneyMode(false);
       setRoomLink(parsed);
-      // Clean hash so it doesn't re-trigger
       history.replaceState(null, '', window.location.pathname);
     } else {
-      history.replaceState({ playStep: 'mode', mode: null, opponent: null, moneyMode: null }, '', '');
+      history.replaceState({ playStep: 'opponent', mode: 'holdem', opponent: null, moneyMode: null }, '', '');
     }
-  }, []);
-
-  const handleModeSelect = useCallback((m: '3card' | 'holdem') => {
-    setMode(m);
-    setOpponent(null);
-    setMoneyMode(null);
-    pushPlayState(m, null, null);
   }, []);
 
   const handleOpponentSelect = useCallback((o: 'bot' | 'pvp') => {
@@ -400,14 +473,6 @@ export const PlayHub = () => {
     pushPlayState(mode, opponent, mm);
   }, [mode, opponent, setRealMoneyMode]);
 
-  const goBackToMode = useCallback(() => {
-    if (isInGame) return;
-    setMode(null);
-    setOpponent(null);
-    setMoneyMode(null);
-    if (!suppressPush.current) history.back();
-  }, [isInGame]);
-
   const goBackToOpponent = useCallback(() => {
     if (isInGame) return;
     setOpponent(null);
@@ -421,30 +486,23 @@ export const PlayHub = () => {
     if (!suppressPush.current) history.back();
   }, [isInGame]);
 
-  // Step 1: Mode selection
-  if (!mode) {
-    return <ModeSelect onSelect={handleModeSelect} />;
-  }
-
-  // Step 2: Opponent selection
+  // Step 1: Opponent selection (Bot vs PvP)
   if (!opponent) {
-    return <OpponentSelect mode={mode} onSelect={handleOpponentSelect} onBack={goBackToMode} />;
+    return <OpponentSelect mode={mode} onSelect={handleOpponentSelect} onBack={() => {}} />;
   }
 
-  // Step 3: Money mode selection
+  // Step 2: Money mode selection
   if (!moneyMode) {
     return <MoneyModeSelect mode={mode} opponent={opponent} onSelect={handleMoneyModeSelect} onBack={goBackToOpponent} />;
   }
 
-  // Step 4: Game
+  // Step 3: Game
   return (
     <>
       <GameBreadcrumb mode={mode} opponent={opponent} onBack={goBackToMoney} />
       <AnimatePresence mode="wait">
-        {mode === '3card' && opponent === 'bot' && <PlayTab key="3card-bot" />}
-        {mode === '3card' && opponent === 'pvp' && <PvPTab key="3card-pvp" />}
-        {mode === 'holdem' && opponent === 'bot' && <HoldemTab key="holdem-bot" />}
-        {mode === 'holdem' && opponent === 'pvp' && <HoldemPvPTab key="holdem-pvp" roomLink={roomLink?.gameType === 'holdem' ? roomLink : undefined} />}
+        {opponent === 'bot' && <HoldemTab key="holdem-bot" />}
+        {opponent === 'pvp' && <HoldemPvPTab key="holdem-pvp" roomLink={roomLink?.gameType === 'holdem' ? roomLink : undefined} />}
       </AnimatePresence>
     </>
   );
