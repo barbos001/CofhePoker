@@ -20,7 +20,8 @@ export const useLobby = () => {
 
   const refresh = useCallback(async () => {
     if (!publicClient || !deployed) return;
-    store.setLoading(true);
+    const s = useLobbyStore.getState();
+    s.setLoading(true);
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const count = await publicClient.readContract({
@@ -28,7 +29,7 @@ export const useLobby = () => {
         functionName: 'getOpenTableCount',
       } as any) as bigint;
 
-      if (count === 0n) { store.setTables([]); store.setLoading(false); return; }
+      if (count === 0n) { s.setTables([]); s.setLoading(false); return; }
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const ids = await publicClient.readContract({
@@ -54,13 +55,13 @@ export const useLobby = () => {
       }));
 
       LOG(`Fetched ${tables.length} open tables`);
-      store.setTables(tables);
+      s.setTables(tables);
     } catch (err) {
       LOG('Fetch failed:', err);
-      store.setError(err instanceof Error ? err.message : 'Failed to load lobby');
+      useLobbyStore.getState().setError(err instanceof Error ? err.message : 'Failed to load lobby');
     }
-    store.setLoading(false);
-  }, [publicClient, deployed, store]);
+    useLobbyStore.getState().setLoading(false);
+  }, [publicClient, deployed]);
 
   // Poll every 10s
   useEffect(() => {
