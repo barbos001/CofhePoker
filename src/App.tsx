@@ -28,7 +28,11 @@ const PAGE_VARIANTS = {
 const PAGE_TRANSITION = { duration: 0.38, ease: [0.22, 1, 0.36, 1] };
 
 export default function App() {
-  const { appState, setAppState, setAddress, sessionStartedAt, setSessionStartedAt } = useGameStore();
+  const appState            = useGameStore(s => s.appState);
+  const setAppState         = useGameStore(s => s.setAppState);
+  const setAddress          = useGameStore(s => s.setAddress);
+  const sessionStartedAt    = useGameStore(s => s.sessionStartedAt);
+  const setSessionStartedAt = useGameStore(s => s.setSessionStartedAt);
   const [preloaderKey, setPreloaderKey] = useState(0);
   const prevAppStateRef = useRef(appState);
   const isFirstRender = useRef(true);

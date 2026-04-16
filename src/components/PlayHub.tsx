@@ -338,7 +338,7 @@ const GameBreadcrumb = ({
 }: {
   mode: '3card' | 'holdem'; opponent: 'bot' | 'pvp'; onBack: () => void;
 }) => {
-  const { playState } = useGameStore();
+  const playState = useGameStore(s => s.playState);
   const isInGame = !['lobby', 'result'].includes(playState);
 
   // Don't show breadcrumb during active game — it's distracting
@@ -388,8 +388,9 @@ function pushPlayState(mode: GameMode, opponent: Opponent, moneyMode: MoneyMode)
 }
 
 export const PlayHub = () => {
-  const { playState, activeTab } = useGameStore();
-  const { setRealMoneyMode } = useVaultStore();
+  const playState      = useGameStore(s => s.playState);
+  const activeTab      = useGameStore(s => s.activeTab);
+  const setRealMoneyMode = useVaultStore(s => s.setRealMoneyMode);
   // Always Texas Hold'em — 3-Card mode removed
   const mode: NonNullable<GameMode> = 'holdem';
   const [opponent, setOpponent] = useState<Opponent>(null);

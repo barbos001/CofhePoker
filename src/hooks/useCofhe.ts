@@ -83,8 +83,8 @@ async function _initSingleton(
 
         _client = client;
         _lastWalletAddress = walletAddress;
-        useCofheStore.getState().setLoading(false);
-        useCofheStore.getState().setReady(true);
+        // Batch both updates into a single store notification
+        useCofheStore.setState({ isLoading: false, isReady: true });
         return;
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'CoFHE init failed';
@@ -92,8 +92,7 @@ async function _initSingleton(
         if (attempt < MAX_RETRIES - 1) {
           await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
         } else {
-          useCofheStore.getState().setLoading(false);
-          useCofheStore.getState().setError(msg);
+          useCofheStore.setState({ isLoading: false, error: msg });
         }
       }
     }

@@ -190,7 +190,7 @@ export const SFX = {
 /* ── useSounds hook ─────────────────────────────────────────────── */
 export const useSounds = () => {
   const prevState = useRef('');
-  const { playState } = useGameStore();
+  const playState = useGameStore(s => s.playState);
 
   useEffect(() => {
     if (prevState.current === playState) return;

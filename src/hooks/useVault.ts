@@ -59,13 +59,9 @@ export const useVault = () => {
   const publicClient             = usePublicClient();
   const { writeContractAsync }   = useWriteContract();
 
-  const {
-    setEthFree, setEthLocked,
-    setUsdtFree, setUsdtLocked,
-    setEthUsdPrice, setPriceStale,
-    walletPanelOpen,
-    ethUsdPrice,
-  } = useVaultStore();
+  // Use individual selectors to avoid whole-store re-renders
+  const walletPanelOpen = useVaultStore(s => s.walletPanelOpen);
+  const ethUsdPrice     = useVaultStore(s => s.ethUsdPrice);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -90,16 +86,17 @@ export const useVault = () => {
         read('isPriceStale')                              as Promise<boolean>,
       ]);
 
-      setEthFree(ethFree);
-      setEthLocked(ethLocked);
-      setUsdtFree(usdtFree);
-      setUsdtLocked(usdtLocked);
-      setEthUsdPrice(price);
-      setPriceStale(stale);
+      // Batch all updates into a single store notification
+      useVaultStore.setState({
+        ethFree, ethLocked,
+        usdtFree, usdtLocked,
+        ethUsdPrice: price,
+        priceStale: stale,
+      });
     } catch {
       // Silently ignore if contract not yet deployed
     }
-  }, [address, publicClient, setEthFree, setEthLocked, setUsdtFree, setUsdtLocked, setEthUsdPrice, setPriceStale]);
+  }, [address, publicClient]);
 
   // ─── Auto-poll every ~12s when panel is open ───────────────────────────────
   useEffect(() => {

@@ -13,7 +13,7 @@ import { useVault }                from '@/hooks/useVault';
 import { AnimatePresence, motion } from 'framer-motion';
 
 export const AppShell = () => {
-  const { activeTab } = useGameStore();
+  const activeTab = useGameStore(s => s.activeTab);
   useSounds();
   useVault(); // initializes vault balance polling
 

@@ -39,10 +39,15 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
   const { decryptCard, decryptPublicCard, ensurePermit, isReady: cofheReady } = useCofhe();
-  const { balance, setBalance, finishHand } = useGameStore(s => ({
-    balance: s.balance, setBalance: s.setBalance, finishHand: s.finishHand,
-  }));
-  const { realMoneyMode, selectedToken, ethUsdPrice, ethFree, usdtFree } = useVaultStore();
+  // Use individual selectors to avoid re-renders on unrelated store changes
+  const balance    = useGameStore(s => s.balance);
+  const setBalance = useGameStore(s => s.setBalance);
+  const finishHand = useGameStore(s => s.finishHand);
+  const realMoneyMode = useVaultStore(s => s.realMoneyMode);
+  const selectedToken = useVaultStore(s => s.selectedToken);
+  const ethUsdPrice   = useVaultStore(s => s.ethUsdPrice);
+  const ethFree       = useVaultStore(s => s.ethFree);
+  const usdtFree      = useVaultStore(s => s.usdtFree);
   const deployed = HOLDEM_PVP_CONTRACT_ADDRESS !== '0x0000000000000000000000000000000000000000';
 
   // Chip → USD → ETH conversion helpers (1 chip = $1 USD = 10^18 usdWei)

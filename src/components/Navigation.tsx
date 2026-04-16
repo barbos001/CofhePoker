@@ -89,11 +89,22 @@ const AnimatedChips = ({ value }: { value: number }) => {
 };
 
 export const TopBar = () => {
-  const { activeTab, setActiveTab, balance, setAppState, history, playState } = useGameStore();
+  const activeTab        = useGameStore(s => s.activeTab);
+  const setActiveTab     = useGameStore(s => s.setActiveTab);
+  const balance          = useGameStore(s => s.balance);
+  const setAppState      = useGameStore(s => s.setAppState);
+  const history          = useGameStore(s => s.history);
+  const playState        = useGameStore(s => s.playState);
   const { address: walletAddr, isConnected } = useAccount();
   const unreadHistory = useUnreadHistory(activeTab, history);
   const { disconnect } = useDisconnect();
-  const { ethFree, usdtFree, ethUsdPrice, selectedToken, walletPanelOpen, setWalletPanelOpen, realMoneyMode } = useVaultStore();
+  const ethFree          = useVaultStore(s => s.ethFree);
+  const usdtFree         = useVaultStore(s => s.usdtFree);
+  const ethUsdPrice      = useVaultStore(s => s.ethUsdPrice);
+  const selectedToken    = useVaultStore(s => s.selectedToken);
+  const walletPanelOpen  = useVaultStore(s => s.walletPanelOpen);
+  const setWalletPanelOpen = useVaultStore(s => s.setWalletPanelOpen);
+  const realMoneyMode    = useVaultStore(s => s.realMoneyMode);
 
   const displayAddr = walletAddr ? truncateAddr(walletAddr) : 'Not connected';
   const wins = history.filter(h => h.result === 'WON').length;
@@ -296,7 +307,11 @@ export const TopBar = () => {
 };
 
 export const BottomTabBar = () => {
-  const { activeTab, setActiveTab, balance, playState, history } = useGameStore();
+  const activeTab    = useGameStore(s => s.activeTab);
+  const setActiveTab = useGameStore(s => s.setActiveTab);
+  const balance      = useGameStore(s => s.balance);
+  const playState    = useGameStore(s => s.playState);
+  const history      = useGameStore(s => s.history);
   const unreadHistory = useUnreadHistory(activeTab, history);
 
   return (
