@@ -4,11 +4,17 @@
  * SINGLETON: The client is created once at module level and shared
  * across all components that call useCofhe(). This prevents multiple
  * parallel initializations and "CoFHE not initialised" race conditions.
+ *
+ * Reactive state (isReady / isLoading / error) is stored in a Zustand
+ * store so that component re-renders go through React's normal batching
+ * instead of calling forceUpdate() on each subscriber from within an
+ * effect (which can exceed React's 50-update nested-update limit).
  */
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useCallback } from 'react';
 import { useWalletClient, usePublicClient } from 'wagmi';
 import { FheTypes } from '@cofhe/sdk';
 import { useGameStore } from '@/store/useGameStore';
+import { create } from 'zustand';
 
 const loadWebSDK = async () => import('@cofhe/sdk/web');
 
@@ -18,18 +24,29 @@ type CofheClient = any;
 const FHE = (...args: unknown[]) =>
   console.log('%c[FHE]', 'color:#B366FF;font-weight:bold', ...args);
 
+// ─── Zustand store for reactive FHE state ───────────────────────────────────
+interface CofheState {
+  isReady:   boolean;
+  isLoading: boolean;
+  error:     string | null;
+  setReady:   (v: boolean)      => void;
+  setLoading: (v: boolean)      => void;
+  setError:   (v: string | null) => void;
+}
+
+const useCofheStore = create<CofheState>((set) => ({
+  isReady:   false,
+  isLoading: false,
+  error:     null,
+  setReady:   (v) => set({ isReady:   v }),
+  setLoading: (v) => set({ isLoading: v }),
+  setError:   (v) => set({ error:     v }),
+}));
+
+// ─── Singleton mutable state (not reactive — only accessed via store) ────────
 let _client: CofheClient | null = null;
-let _isReady = false;
-let _isLoading = false;
-let _error: string | null = null;
 let _initPromise: Promise<void> | null = null;
 let _lastWalletAddress: string | null = null;
-// Notify all hook instances when state changes
-let _listeners: Set<() => void> = new Set();
-
-function _notify() {
-  _listeners.forEach(fn => fn());
-}
 
 async function _initSingleton(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -38,14 +55,15 @@ async function _initSingleton(
   pc: any,
   walletAddress: string,
 ) {
+  const { isReady, setReady, setLoading, setError } = useCofheStore.getState();
+
   // Already init'd for this wallet
-  if (_isReady && _lastWalletAddress === walletAddress) return;
+  if (isReady && _lastWalletAddress === walletAddress) return;
   // Already loading
   if (_initPromise) return _initPromise;
 
-  _isLoading = true;
-  _error = null;
-  _notify();
+  setLoading(true);
+  setError(null);
 
   _initPromise = (async () => {
     const MAX_RETRIES = 3;
@@ -64,10 +82,9 @@ async function _initSingleton(
         FHE('Connected ✓');
 
         _client = client;
-        _isReady = true;
-        _isLoading = false;
         _lastWalletAddress = walletAddress;
-        _notify();
+        useCofheStore.getState().setLoading(false);
+        useCofheStore.getState().setReady(true);
         return;
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'CoFHE init failed';
@@ -75,9 +92,8 @@ async function _initSingleton(
         if (attempt < MAX_RETRIES - 1) {
           await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
         } else {
-          _error = msg;
-          _isLoading = false;
-          _notify();
+          useCofheStore.getState().setLoading(false);
+          useCofheStore.getState().setError(msg);
         }
       }
     }
@@ -88,28 +104,25 @@ async function _initSingleton(
 
 function _reset() {
   _client = null;
-  _isReady = false;
-  _isLoading = false;
-  _error = null;
   _initPromise = null;
   _lastWalletAddress = null;
-  _notify();
+  const s = useCofheStore.getState();
+  s.setReady(false);
+  s.setLoading(false);
+  s.setError(null);
 }
 
 export const useCofhe = () => {
-  const [, forceUpdate] = useState(0);
   const { data: walletClient } = useWalletClient();
   const publicClient = usePublicClient();
 
   const setPermitStatus = useGameStore(s => s.setPermitStatus);
   const setPermitError  = useGameStore(s => s.setPermitError);
 
-  // Subscribe to singleton state changes
-  useEffect(() => {
-    const listener = () => forceUpdate(n => n + 1);
-    _listeners.add(listener);
-    return () => { _listeners.delete(listener); };
-  }, []);
+  // Read FHE state from the store (no forceUpdate needed)
+  const isReady   = useCofheStore(s => s.isReady);
+  const isLoading = useCofheStore(s => s.isLoading);
+  const error     = useCofheStore(s => s.error);
 
   // Init when wallet connects
   useEffect(() => {
@@ -121,7 +134,7 @@ export const useCofhe = () => {
 
   // Reset when wallet disconnects
   useEffect(() => {
-    if (!walletClient && _isReady) {
+    if (!walletClient && useCofheStore.getState().isReady) {
       _reset();
       setPermitStatus('none');
       FHE('Wallet disconnected — client reset');
@@ -167,7 +180,6 @@ export const useCofhe = () => {
   }, [setPermitStatus, setPermitError]);
 
   // Detects wallet rejections and expired/missing permit errors.
-  // These must NOT be retried — the user must re-sign before decryption can proceed.
   const isPermitError = useCallback((msg: string): boolean =>
     /user rejected|user denied|rejected the request|permit.*expir|not permitted|unauthorized|signature.*invalid|invalid.*signature/i.test(msg),
   []);
@@ -193,8 +205,6 @@ export const useCofhe = () => {
         return card;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        // Permit errors must not be retried — the permit is missing or was rejected.
-        // Set the store state so the PermitWarningBanner surfaces immediately.
         if (isPermitError(msg)) {
           FHE(`Decrypt blocked by permit error: ${msg}`);
           setPermitStatus('expired');
@@ -235,7 +245,6 @@ export const useCofhe = () => {
         return card;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        // Permit errors must not be retried — surface immediately so the user can re-sign.
         if (isPermitError(msg)) {
           FHE(`Public card decrypt blocked by permit error: ${msg}`);
           setPermitStatus('expired');
@@ -255,16 +264,6 @@ export const useCofhe = () => {
     throw new Error('Public card decrypt retries exhausted');
   }, [ensurePermit, isPermitError, setPermitStatus, setPermitError]);
 
-  /**
-   * decryptForTx — fetches a plaintext decrypt result + FHE-network signature
-   * for on-chain publishing via FHE.publishDecryptResult().
-   *
-   * Does NOT require a user permit (the signature is from the FHE network, not
-   * the user's wallet). Use for bot-decision and showdown ebool handles.
-   *
-   * @param ctHash  — the handle returned by getBotDecryptHandle / getShowdownDecryptHandle
-   * @returns { result: bigint, signature: `0x${string}` }
-   */
   const decryptForTx = useCallback(async (
     ctHash: bigint,
   ): Promise<{ result: bigint; signature: `0x${string}` }> => {
@@ -278,9 +277,6 @@ export const useCofhe = () => {
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
-        // @cofhe/sdk ≥ 0.4 API: decryptForTx returns { result, signature }
-        // result  — plaintext bigint (0n or 1n for ebool, full value for euintN)
-        // signature — FHE-network attestation passed to FHE.publishDecryptResult()
         const output = await _client
           .decryptForTx(ctHash, FheTypes.Bool)
           .execute() as { result: bigint; signature: `0x${string}` };
@@ -319,9 +315,9 @@ export const useCofhe = () => {
 
   return {
     cofheClient:       _client,
-    isReady:           _isReady,
-    isLoading:         _isLoading,
-    error:             _error,
+    isReady,
+    isLoading,
+    error,
     ensurePermit,
     isPermitError,
     decryptCard,
