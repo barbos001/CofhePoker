@@ -89,15 +89,16 @@ export const useGameGuards = () => {
   const wasConnected = useRef(isConnected);
   useEffect(() => {
     if (wasConnected.current && !isConnected) {
-      const isActive = !['lobby', 'result'].includes(store.playState);
+      const { playState, setStatus } = useGameStore.getState();
+      const isActive = !['lobby', 'result'].includes(playState);
       if (isActive && isOnChain) {
         GUARD('Wallet disconnected during active game — auto-folding');
-        store.setStatus('Wallet disconnected — folding…', '#FF3B3B');
+        setStatus('Wallet disconnected — folding…', '#FF3B3B');
         foldRef.current?.();
       }
     }
     wasConnected.current = isConnected;
-  }, [isConnected, store.playState, isOnChain, store]);
+  }, [isConnected, isOnChain]);
 
   useEffect(() => {
     const isActive = !['lobby', 'result'].includes(store.playState);

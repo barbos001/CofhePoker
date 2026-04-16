@@ -29,7 +29,7 @@ async function pollUntilTrue(
 }
 
 export const usePvPGame = () => {
-  const store = usePvPGameStore();
+  const gs = usePvPGameStore.getState;
   const { address, isConnected } = useAccount();
   const publicClient = usePublicClient();
   const { decryptCard, decryptPublicCard } = useCofhe();
@@ -60,14 +60,14 @@ export const usePvPGame = () => {
   }, [publicClient, address]);
 
   const startPvPHand = useCallback(async () => {
-    if (!isOnChain || !store.tableId || actingRef.current) return;
+    if (!isOnChain || !gs().tableId || actingRef.current) return;
     actingRef.current = true;
-    const tableId = BigInt(store.tableId);
+    const tableId = BigInt(gs().tableId);
 
     try {
       GAME('═══ NEW PVP HAND ═══');
-      store.setPvPState('dealing');
-      store.setStatus('Dealing encrypted cards (FHE)…', '#B366FF');
+      gs().setPvPState('dealing');
+      gs().setStatus('Dealing encrypted cards (FHE)…', '#B366FF');
 
       await writeAndWait('startPvPHand', {
         address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
@@ -91,12 +91,12 @@ export const usePvPGame = () => {
         functionName: 'getPvPTableInfo', args: [tableId],
       } as any) as [string, string, number, bigint, bigint, bigint, boolean, bigint];
       const amP1 = info[0].toLowerCase() === address!.toLowerCase();
-      store.setIsPlayer1(amP1);
-      store.setOpponent(amP1 ? info[1] : info[0]);
+      gs().setIsPlayer1(amP1);
+      gs().setOpponent(amP1 ? info[1] : info[0]);
 
       // Decrypt my 3 cards
-      store.setPvPState('decrypting');
-      store.setStatus('Decrypting your cards…', '#B366FF');
+      gs().setPvPState('decrypting');
+      gs().setStatus('Decrypting your cards…', '#B366FF');
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const [c0, c1, c2] = await publicClient!.readContract({
@@ -109,41 +109,41 @@ export const usePvPGame = () => {
 
       const revealed: number[] = [];
       for (const [i, ct] of [[0, c0], [1, c1], [2, c2]] as [number, bigint][]) {
-        store.setStatus(`Revealing card ${i + 1}/3…`, '#B366FF');
+        gs().setStatus(`Revealing card ${i + 1}/3…`, '#B366FF');
         const [card] = await Promise.all([decryptCard(ct), sleep(350)]);
-        store.revealMyCard(card);
+        gs().revealMyCard(card);
         revealed.push(card);
         const d = getCardData(card);
         GAME(`Card ${i + 1}: ${d.rankString}${d.suit}`);
       }
 
       const myEval = evaluateHand(revealed);
-      store.setMyEval(myEval);
+      gs().setMyEval(myEval);
       GAME(`My hand: ${myEval.name} (${myEval.score})`);
 
-      store.setPvPState('acting');
-      store.setStatus('Your turn — Play or Fold?', '#FFF');
-      store.setBalance(await readBalance());
-      store.setPot(Number(info[3]));
+      gs().setPvPState('acting');
+      gs().setStatus('Your turn — Play or Fold?', '#FFF');
+      gs().setBalance(await readBalance());
+      gs().setPot(Number(info[3]));
 
     } catch (err) {
       console.error('[startPvPHand]', err);
       GAME('FAILED:', err instanceof Error ? err.message : err);
-      store.setStatus('Error — try again.', '#FF3B3B');
-      store.setPvPState('seated');
+      gs().setStatus('Error — try again.', '#FF3B3B');
+      gs().setPvPState('seated');
     } finally {
       actingRef.current = false;
     }
-  }, [isOnChain, store, writeAndWait, publicClient, address, decryptCard, readBalance]);
+  }, [isOnChain, writeAndWait, publicClient, address, decryptCard, readBalance]);
 
   const pvpAct = useCallback(async (plays: boolean) => {
-    if (!isOnChain || !store.tableId || actingRef.current) return;
+    if (!isOnChain || !gs().tableId || actingRef.current) return;
     actingRef.current = true;
-    const tableId = BigInt(store.tableId);
+    const tableId = BigInt(gs().tableId);
 
     try {
       GAME(`Player ${plays ? 'PLAYS' : 'FOLDS'}`);
-      store.setStatus(plays ? 'Placing bet…' : 'Folding…', plays ? '#FFF' : '#FF3B3B');
+      gs().setStatus(plays ? 'Placing bet…' : 'Folding…', plays ? '#FFF' : '#FF3B3B');
 
       const txHash = await writeAndWait('pvpAct', {
         address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
@@ -168,10 +168,10 @@ export const usePvPGame = () => {
       if (state === PvPState.AWAITING_SHOWDOWN) {
         // Both played → showdown. Only player1 resolves to avoid duplicate TXs.
         GAME('Both played → showdown');
-        store.setPvPState('showdown');
-        store.setStatus('Determining winner (FHE)…', '#B366FF');
+        gs().setPvPState('showdown');
+        gs().setStatus('Determining winner (FHE)…', '#B366FF');
 
-        if (store.isPlayer1) {
+        if (gs().isPlayer1) {
           const ready = await pollUntilTrue('pvp showdown', () =>
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             publicClient!.readContract({
@@ -179,8 +179,8 @@ export const usePvPGame = () => {
               functionName: 'isPvPShowdownReady', args: [tableId],
             } as any) as Promise<boolean>
           );
-          if (!ready) { store.setStatus('Showdown timed out.', '#FF3B3B'); return; }
-          store.setStatus('Revealing winner…', '#B366FF');
+          if (!ready) { gs().setStatus('Showdown timed out.', '#FF3B3B'); return; }
+          gs().setStatus('Revealing winner…', '#B366FF');
           const resolveHash = await writeAndWait('resolvePvPShowdown', {
             address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
             functionName: 'resolvePvPShowdown', args: [tableId],
@@ -196,15 +196,15 @@ export const usePvPGame = () => {
             } as any) as [string, string, number, bigint, bigint, bigint, boolean, bigint];
             return i[2] === PvPState.COMPLETE;
           });
-          if (!complete) { store.setStatus('Showdown timed out.', '#FF3B3B'); return; }
+          if (!complete) { gs().setStatus('Showdown timed out.', '#FF3B3B'); return; }
           await _finishHand(tableId, txHash);
         }
         return;
       }
 
       // Opponent hasn't acted yet
-      store.setPvPState('waitingOpponent');
-      store.setStatus('Waiting for opponent…', '#888');
+      gs().setPvPState('waitingOpponent');
+      gs().setStatus('Waiting for opponent…', '#888');
 
       // Poll until state changes from ACTING
       await pollUntilTrue('opponent action', async () => {
@@ -226,11 +226,11 @@ export const usePvPGame = () => {
       if (info2[2] === PvPState.COMPLETE) {
         await _finishHand(tableId, txHash);
       } else if (info2[2] === PvPState.AWAITING_SHOWDOWN) {
-        store.setPvPState('showdown');
-        store.setStatus('Determining winner (FHE)…', '#B366FF');
+        gs().setPvPState('showdown');
+        gs().setStatus('Determining winner (FHE)…', '#B366FF');
 
         // Only player1 resolves to avoid both players submitting the TX
-        if (store.isPlayer1) {
+        if (gs().isPlayer1) {
           await pollUntilTrue('pvp showdown', () =>
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             publicClient!.readContract({
@@ -238,7 +238,7 @@ export const usePvPGame = () => {
               functionName: 'isPvPShowdownReady', args: [tableId],
             } as any) as Promise<boolean>
           );
-          store.setStatus('Revealing winner…', '#B366FF');
+          gs().setStatus('Revealing winner…', '#B366FF');
           const rHash = await writeAndWait('resolvePvPShowdown', {
             address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
             functionName: 'resolvePvPShowdown', args: [tableId],
@@ -253,7 +253,7 @@ export const usePvPGame = () => {
             } as any) as [string, string, number, bigint, bigint, bigint, boolean, bigint];
             return i[2] === PvPState.COMPLETE;
           });
-          if (!complete) { store.setStatus('Showdown timed out.', '#FF3B3B'); return; }
+          if (!complete) { gs().setStatus('Showdown timed out.', '#FF3B3B'); return; }
           await _finishHand(tableId, txHash);
         }
       }
@@ -261,11 +261,11 @@ export const usePvPGame = () => {
     } catch (err) {
       console.error('[pvpAct]', err);
       GAME('FAILED:', err instanceof Error ? err.message : err);
-      store.setStatus('Transaction failed.', '#FF3B3B');
+      gs().setStatus('Transaction failed.', '#FF3B3B');
     } finally {
       actingRef.current = false;
     }
-  }, [isOnChain, store, writeAndWait, publicClient, address, decryptPublicCard, readBalance]);
+  }, [isOnChain, writeAndWait, publicClient, address, decryptPublicCard, readBalance]);
 
   const _finishHand = useCallback(async (tableId: bigint, txHash: `0x${string}`) => {
     if (!publicClient) return;
@@ -317,13 +317,13 @@ export const usePvPGame = () => {
       GAME(`Opponent cards: ${oppCards.map(c => { const d = getCardData(c); return d.rankString + d.suit; }).join(' ')}`);
 
       const oppEval = evaluateHand(oppCards);
-      store.setOpponentEval(oppEval);
+      gs().setOpponentEval(oppEval);
     } catch {
       GAME('Opponent cards not available');
     }
 
-    store.finishPvPHand({ result, delta, desc, pot: potNum, balance: newBal, txHash, opponentCards: oppCards });
-  }, [publicClient, address, store, readBalance, decryptPublicCard]);
+    gs().finishPvPHand({ result, delta, desc, pot: potNum, balance: newBal, txHash, opponentCards: oppCards });
+  }, [publicClient, address, readBalance, decryptPublicCard]);
 
   return { startPvPHand, pvpAct, isOnChain };
 };

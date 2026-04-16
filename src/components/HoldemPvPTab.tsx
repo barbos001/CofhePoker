@@ -52,6 +52,8 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
   const chipToEthStr = (chips: number) => formatEth(chipToEthWei(chips));
 
   const [lobbyState, setLobbyState] = useState<LobbyState>('idle');
+  const lobbyStateRef = useRef<LobbyState>('idle');
+  const _setLobbyState = (s: LobbyState) => { lobbyStateRef.current = s; setLobbyState(s); };
   const [tables, setTables] = useState<TableEntry[]>([]);
   const [tableId, setTableId] = useState<number | null>(null);
   const [status, setStatus] = useState('');
@@ -151,7 +153,7 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
       const iAmP1 = p1.toLowerCase() === address.toLowerCase();
       const opp = iAmP1 ? p2 : p1;
       if (opp !== '0x0000000000000000000000000000000000000000') setOpponent(opp);
-      if (lobbyState === 'idle' || lobbyState === 'waiting') setIsCreator(iAmP1);
+      if (lobbyStateRef.current === 'idle' || lobbyStateRef.current === 'waiting') setIsCreator(iAmP1);
 
       const myTurn = nextToAct.toLowerCase() === address.toLowerCase();
       setIsMyTurn(myTurn);
@@ -182,14 +184,14 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
       }
 
       if (state === HoldemPvPState.OPEN) {
-        if (lobbyState !== 'waiting') addLog('Waiting for opponent to join...');
-        setLobbyState('waiting');
+        if (lobbyStateRef.current !== 'waiting') addLog('Waiting for opponent to join...');
+        _setLobbyState('waiting');
         setStatus('Waiting for opponent...');
       } else if (state === HoldemPvPState.BOTH_SEATED) {
-        if (lobbyState !== 'seated') {
+        if (lobbyStateRef.current !== 'seated') {
           addLog(`Opponent joined: ${truncAddr(opp)}`);
           SFX.notify();
-          setLobbyState('seated');
+          _setLobbyState('seated');
           if (iAmP1) {
             // Only creator (P1) auto-starts
             addLog('Auto-starting hand...');
@@ -200,26 +202,26 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
           }
           return;
         }
-        setLobbyState('seated');
+        _setLobbyState('seated');
         setStatus(iAmP1 ? 'Both seated — starting...' : 'Waiting for host to start...');
       } else if (state >= HoldemPvPState.PREFLOP && state <= HoldemPvPState.RIVER) {
         const rn = stateToRound(state);
         if (roundName !== rn) addLog(`Round: ${rn}`);
         if (myTurn && !isMyTurn) addLog('Your turn to act');
         if (!myTurn && isMyTurn) addLog('Waiting for opponent...');
-        setLobbyState('playing');
+        _setLobbyState('playing');
         setRoundName(rn);
         setStatus(myTurn ? `${rn} — Your turn` : `${rn} — Waiting for opponent...`);
       } else if (state === HoldemPvPState.AWAITING_SHOWDOWN) {
-        if (lobbyState !== 'showdown') addLog('All rounds complete — Showdown');
-        setLobbyState('showdown');
+        if (lobbyStateRef.current !== 'showdown') addLog('All rounds complete — Showdown');
+        _setLobbyState('showdown');
         setStatus('Showdown — computing results...');
       } else if (state === HoldemPvPState.COMPLETE) {
-        if (lobbyState !== 'result') {
+        if (lobbyStateRef.current !== 'result') {
           // Fetch result + update balance
           const [winner, resPot] = await readContract('getResult', [BigInt(tableId)]) as [string, bigint];
           setHandResult({ winner, pot: Number(resPot) });
-          setLobbyState('result');
+          _setLobbyState('result');
 
           const bal = Number(await readContract('getBalance') as bigint);
           setBalance(bal);
@@ -259,7 +261,7 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
     } catch (e) {
       LOG('Poll error:', e);
     }
-  }, [deployed, publicClient, tableId, address, readContract, lobbyState, decryptPublicCard]);
+  }, [deployed, publicClient, tableId, address, readContract, decryptPublicCard]);
 
   useEffect(() => {
     if (pollRef.current) clearInterval(pollRef.current);
@@ -290,7 +292,7 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
           await writeAndWait('leaveTable', [BigInt(tableId)]);
         } catch { /* may already be gone */ }
         setTableId(null);
-        setLobbyState('idle');
+        _setLobbyState('idle');
         setStatus('');
         setError('Lobby timed out — no opponent joined within 60 seconds');
       }
@@ -373,7 +375,7 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
           await writeAndWait('joinTable', [BigInt(tid)]);
         }
         setTableId(tid);
-        setLobbyState('seated');
+        _setLobbyState('seated');
         addLog(`Joined table #${tid} via link`);
         LOG(`Auto-joined table #${tid}`);
       } catch (e) {
@@ -484,7 +486,7 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
             // Active game — resume it
             LOG(`Resuming active game at table #${existingSeat}`);
             setTableId(existingSeat);
-            setLobbyState('playing');
+            _setLobbyState('playing');
             addLog(`Resumed game at table #${existingSeat}`);
             setLoading(false);
             return;
@@ -494,7 +496,7 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
             // Both players ready — just start the hand instead of leaving
             LOG(`Both seated at #${existingSeat} — starting hand`);
             setTableId(existingSeat);
-            setLobbyState('seated');
+            _setLobbyState('seated');
             addLog(`Both seated at table #${existingSeat} — starting...`);
             setLoading(false);
             setTimeout(() => autoStartRef.current?.(), 300);
@@ -516,7 +518,7 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
 
       setTableId(seat);
       setIsCreator(true);
-      setLobbyState('waiting');
+      _setLobbyState('waiting');
       addLog(`Table #${seat} created (${isPrivate ? 'private' : 'public'})`);
 
       // For private: fetch invite code — show as "tableId:code"
@@ -569,7 +571,7 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
       await writeAndWait('joinTable', [BigInt(id)]);
       setTableId(id);
       setIsCreator(false);
-      setLobbyState('seated');
+      _setLobbyState('seated');
       LOG(`Joined table #${id}`);
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
     setLoading(false);
@@ -620,7 +622,7 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
         await writeAndWait('joinTable', [BigInt(tid)]);
       }
       setTableId(tid);
-      setLobbyState('seated');
+      _setLobbyState('seated');
       LOG(`Joined table #${tid}`);
     } catch (e) { setError(e instanceof Error ? e.message : 'Invalid link or table'); }
     setLoading(false);
@@ -636,14 +638,14 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
       const state = info[2];
       if (state === HoldemPvPState.OPEN) {
         // Still waiting — don't send TX, just go back to waiting UI
-        setLobbyState('waiting');
+        _setLobbyState('waiting');
         setStatus('Waiting for opponent to join...');
         setLoading(false);
         return;
       }
       if (state !== HoldemPvPState.BOTH_SEATED && state !== HoldemPvPState.COMPLETE) {
         // Game already in progress — sync state instead of erroring
-        setLobbyState('playing');
+        _setLobbyState('playing');
         setLoading(false);
         return;
       }
@@ -664,7 +666,7 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
       await ensurePermit();
       SFX.deal();
       await writeAndWait('startHand', [BigInt(tableId)]);
-      setLobbyState('playing');
+      _setLobbyState('playing');
       await refreshBalance(); // ante deducted
       addLog('Hand started — dealing encrypted cards');
       addLog('FHE: Generating 9 encrypted cards (3 seeds)');
@@ -684,14 +686,14 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
           await pollTableState();
         } else if (actualState === HoldemPvPState.OPEN) {
           // Still waiting for opponent — go back to waiting, no error
-          setLobbyState('waiting');
+          _setLobbyState('waiting');
           setStatus('Waiting for opponent to join...');
           addLog('Cannot start yet — waiting for opponent');
         } else if (actualState === HoldemPvPState.BOTH_SEATED) {
           // Both seated but startHand failed — retry once
           addLog('Both seated — retrying start...');
           setError('Start failed. Tap Start Hand to retry.');
-          setLobbyState('seated');
+          _setLobbyState('seated');
         } else {
           setError(msg);
         }
@@ -710,7 +712,7 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
     // Immediately go back to lobby — don't wait for TX
     const tid = tableId;
     setTableId(null);
-    setLobbyState('idle');
+    _setLobbyState('idle');
     setMyCards([]); setCommunityCards([]); setOppCards([]);
     setError('');
     setStatus('');

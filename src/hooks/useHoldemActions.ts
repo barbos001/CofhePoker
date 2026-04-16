@@ -49,7 +49,7 @@ const ROUND_LABELS: Record<Round, string> = {
 };
 
 export const useHoldemActions = () => {
-  const store                    = useGameStore();
+  const gs = useGameStore.getState;
   const { address, isConnected } = useAccount();
   const publicClient             = usePublicClient();
   const { decryptCard, decryptPublicCard, ensurePermit } = useCofhe();
@@ -117,45 +117,45 @@ export const useHoldemActions = () => {
       await fn();
     } catch (err) {
       console.error('[holdem:confirmNext]', err);
-      store.setStatus('Transaction failed — try again.', '#FF3B3B');
-      store.setPlayState('playerTurn');
+      gs().setStatus('Transaction failed — try again.', '#FF3B3B');
+      gs().setPlayState('playerTurn');
     } finally {
       actingRef.current = false;
     }
-  }, [store]);
+  }, []);
 
 
   /** Core deal logic — runs startHand TX + polls + decrypts cards. */
   const _doDeal = useCallback(async (tableId: bigint) => {
     if (!publicClient) return;
-    store.setStatus('Posting blinds & dealing…', '#00BFFF');
+    gs().setStatus('Posting blinds & dealing…', '#00BFFF');
     await writeAndWait('startHand', {
       address: HOLDEM_CONTRACT_ADDRESS, abi: CIPHER_HOLDEM_ABI,
       functionName: 'startHand', args: [tableId],
     });
 
-    store.setStatus('Generating encrypted cards… 0s', '#00BFFF');
+    gs().setStatus('Generating encrypted cards… 0s', '#00BFFF');
     const ready = await pollUntilTrue('card generation', async () => {
       const i = await getTableInfo(tableId);
       return i.state === HoldemState.PREFLOP;
     }, POLL_MS, MAX_POLLS,
-      (sec) => store.setStatus(`Generating encrypted cards… ${sec}s`, '#00BFFF'),
+      (sec) => gs().setStatus(`Generating encrypted cards… ${sec}s`, '#00BFFF'),
     );
 
     if (!ready) {
-      store.setStatus('Card generation timed out.', '#FF3B3B');
-      store.setPlayState('lobby');
+      gs().setStatus('Card generation timed out.', '#FF3B3B');
+      gs().setPlayState('lobby');
       return;
     }
 
-    store.setPlayState('decrypting');
+    gs().setPlayState('decrypting');
     const SYNC_WAIT = 20;
     for (let s = SYNC_WAIT; s > 0; s--) {
-      store.setStatus(`Waiting for FHE sync… ${s}s`, '#00BFFF');
+      gs().setStatus(`Waiting for FHE sync… ${s}s`, '#00BFFF');
       await sleep(1000);
     }
 
-    store.setStatus('Decrypting hole cards…', '#00BFFF');
+    gs().setStatus('Decrypting hole cards…', '#00BFFF');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [c0, c1] = await publicClient.readContract({
       address: HOLDEM_CONTRACT_ADDRESS, abi: CIPHER_HOLDEM_ABI,
@@ -164,16 +164,16 @@ export const useHoldemActions = () => {
 
     for (const ct of [c0, c1]) {
       const cardId = await decryptCard(ct);
-      store.revealPlayerCard(cardId);
+      gs().revealPlayerCard(cardId);
       const d = getCardData(cardId);
       GAME(`Hole card → ${d.rankString}${d.suit}`);
     }
-    store.setLastDecryptAt(Date.now());
+    gs().setLastDecryptAt(Date.now());
 
-    store.setBalance(await readBalance());
-    store.setPlayState('playerTurn');
-    store.setStatus('Pre-flop: CHECK or BET', '#FFE03D');
-  }, [publicClient, store, writeAndWait, getTableInfo, decryptCard, address, readBalance]);
+    gs().setBalance(await readBalance());
+    gs().setPlayState('playerTurn');
+    gs().setStatus('Pre-flop: CHECK or BET', '#FFE03D');
+  }, [publicClient, writeAndWait, getTableInfo, decryptCard, address, readBalance]);
 
 
   const startHand = useCallback(async () => {
@@ -182,47 +182,47 @@ export const useHoldemActions = () => {
     try {
       await ensurePermit();
       GAME('═══ HOLD\'EM HAND ═══');
-      store.setPlayState('dealing');
-      store.setHoldemRound('preflop');
-      store.setStatus('Checking table…', '#00BFFF');
-      store.clearPlayerCards();
-      store.clearCommunityCards();
+      gs().setPlayState('dealing');
+      gs().setHoldemRound('preflop');
+      gs().setStatus('Checking table…', '#00BFFF');
+      gs().clearPlayerCards();
+      gs().clearCommunityCards();
 
       let tableId = await getTableId();
 
       if (tableId === 0n) {
         // First-time: create table (TX1), then deal (TX2) is a separate click
-        store.setStatus('Creating table…', '#00BFFF');
+        gs().setStatus('Creating table…', '#00BFFF');
         await writeAndWait('createTable', {
           address: HOLDEM_CONTRACT_ADDRESS, abi: CIPHER_HOLDEM_ABI,
           functionName: 'createTable',
         });
         tableId = await getTableId();
-        store.setTableId(Number(tableId));
+        gs().setTableId(Number(tableId));
         pendingTableId.current = tableId;
         pendingTxFn.current = async () => { await _doDeal(tableId); };
-        store.setPlayState('confirmAction');
-        store.setStatus('Table created — tap DEAL CARDS', '#00BFFF');
+        gs().setPlayState('confirmAction');
+        gs().setStatus('Table created — tap DEAL CARDS', '#00BFFF');
         return;
       }
 
-      store.setTableId(Number(tableId));
-      store.setBalance(await readBalance());
+      gs().setTableId(Number(tableId));
+      gs().setBalance(await readBalance());
       pendingTableId.current = tableId;
 
       // Check for stuck hand — fold it (TX1), then deal (TX2) is a separate click
       const info = await getTableInfo(tableId);
       if (info.state !== HoldemState.WAITING && info.state !== HoldemState.COMPLETE) {
         GAME('Stuck hand — folding…');
-        store.setStatus('Recovering stuck hand…', '#FF8C42');
+        gs().setStatus('Recovering stuck hand…', '#FF8C42');
         await writeAndWait('fold', {
           address: HOLDEM_CONTRACT_ADDRESS, abi: CIPHER_HOLDEM_ABI,
           functionName: 'fold', args: [tableId],
         });
-        store.setBalance(await readBalance());
+        gs().setBalance(await readBalance());
         pendingTxFn.current = async () => { await _doDeal(tableId); };
-        store.setPlayState('confirmAction');
-        store.setStatus('Ready — tap DEAL CARDS to start', '#FFE03D');
+        gs().setPlayState('confirmAction');
+        gs().setStatus('Ready — tap DEAL CARDS to start', '#FFE03D');
         return;
       }
 
@@ -231,12 +231,12 @@ export const useHoldemActions = () => {
 
     } catch (err) {
       console.error('[holdem:startHand]', err);
-      store.setStatus('Error — try again.', '#FF3B3B');
-      store.setPlayState('lobby');
+      gs().setStatus('Error — try again.', '#FF3B3B');
+      gs().setPlayState('lobby');
     } finally {
       actingRef.current = false;
     }
-  }, [isOnChain, publicClient, store, writeAndWait, getTableId, readBalance, getTableInfo, ensurePermit, _doDeal]);
+  }, [isOnChain, publicClient, writeAndWait, getTableId, readBalance, getTableInfo, ensurePermit, _doDeal]);
 
 
   const actRound = useCallback(async (
@@ -250,14 +250,14 @@ export const useHoldemActions = () => {
   ) => {
     if (!isOnChain || !publicClient || actingRef.current) return;
     actingRef.current = true;
-    const tableId = pendingTableId.current ?? BigInt(store.tableId!);
+    const tableId = pendingTableId.current ?? BigInt(gs().tableId!);
     const actionCode = action === 'check' ? 0 : action === 'raise' ? 2 : 1;
     const label = ROUND_LABELS[round];
 
     try {
       GAME(`Player ${action.toUpperCase()}S at ${round}`);
-      store.setPlayState('botThinking');
-      store.setStatus(`Acting at ${label}…`, '#888888');
+      gs().setPlayState('botThinking');
+      gs().setStatus(`Acting at ${label}…`, '#888888');
 
       // TX1 — player action (1 wallet signature)
       await writeAndWait(actFn, {
@@ -273,24 +273,24 @@ export const useHoldemActions = () => {
           functionName: pollFn, args: [tableId], account: address,
         } as any) as Promise<boolean>,
         POLL_MS, MAX_POLLS,
-        (sec) => store.setStatus(`Bot evaluating (${label})… ${sec}s`, '#888888'),
+        (sec) => gs().setStatus(`Bot evaluating (${label})… ${sec}s`, '#888888'),
       );
 
       if (!botReady) {
-        store.setStatus('Bot decision timed out.', '#FF3B3B');
+        gs().setStatus('Bot decision timed out.', '#FF3B3B');
         return;
       }
 
       // Queue TX2 — user must click PROCEED to send the next signature
       pendingTxFn.current = async () => {
-        store.setStatus('Resolving bot decision…', '#00BFFF');
+        gs().setStatus('Resolving bot decision…', '#00BFFF');
         await writeAndWait(resolveFn, {
           address: HOLDEM_CONTRACT_ADDRESS, abi: CIPHER_HOLDEM_ABI,
           functionName: resolveFn, args: [tableId],
         });
 
         const info = await getTableInfo(tableId);
-        store.setBalance(await readBalance());
+        gs().setBalance(await readBalance());
 
         if (info.state === HoldemState.COMPLETE) {
           GAME(`Bot FOLDED at ${round} → player wins`);
@@ -300,8 +300,8 @@ export const useHoldemActions = () => {
 
         if (info.waitingForCall) {
           GAME('Bot BET → player must call or fold');
-          store.setPlayState('playerTurn');
-          store.setStatus(`Bot bet! CALL or FOLD (${label})`, '#FF8C42');
+          gs().setPlayState('playerTurn');
+          gs().setStatus(`Bot bet! CALL or FOLD (${label})`, '#FF8C42');
           return;
         }
 
@@ -311,36 +311,36 @@ export const useHoldemActions = () => {
           return;
         }
 
-        store.setHoldemRound(nextRound);
+        gs().setHoldemRound(nextRound);
         if (communityCount > 0) {
           await _decryptCommunity(tableId, communityCount, nextRound);
         }
-        store.setPlayState('playerTurn');
-        store.setStatus(`${ROUND_LABELS[nextRound]}: CHECK or BET`, '#FFE03D');
+        gs().setPlayState('playerTurn');
+        gs().setStatus(`${ROUND_LABELS[nextRound]}: CHECK or BET`, '#FFE03D');
       };
 
-      store.setPlayState('confirmAction');
-      store.setStatus(`Bot ready — tap PROCEED`, '#FFE03D');
+      gs().setPlayState('confirmAction');
+      gs().setStatus(`Bot ready — tap PROCEED`, '#FFE03D');
 
     } catch (err) {
       console.error(`[holdem:act${round}]`, err);
-      store.setStatus(`Error at ${round}.`, '#FF3B3B');
+      gs().setStatus(`Error at ${round}.`, '#FF3B3B');
     } finally {
       actingRef.current = false;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOnChain, publicClient, store, writeAndWait, getTableInfo, readBalance, address]);
+  }, [isOnChain, publicClient, writeAndWait, getTableInfo, readBalance, address]);
 
 
   const callBotAction = useCallback(async () => {
     if (!isOnChain || !publicClient || actingRef.current) return;
     actingRef.current = true;
-    const tableId = pendingTableId.current ?? BigInt(store.tableId!);
+    const tableId = pendingTableId.current ?? BigInt(gs().tableId!);
 
     try {
       GAME('Player CALLS bot bet');
-      store.setPlayState('decrypting');
-      store.setStatus('Calling…', '#00BFFF');
+      gs().setPlayState('decrypting');
+      gs().setStatus('Calling…', '#00BFFF');
 
       await writeAndWait('callBot', {
         address: HOLDEM_CONTRACT_ADDRESS, abi: CIPHER_HOLDEM_ABI,
@@ -348,7 +348,7 @@ export const useHoldemActions = () => {
       });
 
       const info = await getTableInfo(tableId);
-      store.setBalance(await readBalance());
+      gs().setBalance(await readBalance());
 
       // Determine what round we advanced to
       if (info.state === HoldemState.AWAITING_SHOWDOWN) {
@@ -358,21 +358,21 @@ export const useHoldemActions = () => {
 
       const nextRound = stateToRound(info.state);
       if (nextRound) {
-        store.setHoldemRound(nextRound);
+        gs().setHoldemRound(nextRound);
         const communityCount = nextRound === 'flop' ? 3 : 1;
         await _decryptCommunity(tableId, communityCount, nextRound);
-        store.setPlayState('playerTurn');
-        store.setStatus(`${ROUND_LABELS[nextRound]}: CHECK or BET`, '#FFE03D');
+        gs().setPlayState('playerTurn');
+        gs().setStatus(`${ROUND_LABELS[nextRound]}: CHECK or BET`, '#FFE03D');
       }
 
     } catch (err) {
       console.error('[holdem:callBot]', err);
-      store.setStatus('Call failed.', '#FF3B3B');
+      gs().setStatus('Call failed.', '#FF3B3B');
     } finally {
       actingRef.current = false;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOnChain, publicClient, store, writeAndWait, getTableInfo, readBalance]);
+  }, [isOnChain, publicClient, writeAndWait, getTableInfo, readBalance]);
 
 
   const actPreflop = useCallback((action: 'check' | 'bet' | 'raise') =>
@@ -395,11 +395,11 @@ export const useHoldemActions = () => {
   const fold = useCallback(async () => {
     if (!isOnChain || actingRef.current) return;
     actingRef.current = true;
-    const tableId = pendingTableId.current ?? BigInt(store.tableId!);
+    const tableId = pendingTableId.current ?? BigInt(gs().tableId!);
     try {
       GAME('Player FOLDS');
-      store.setPlayState('folding');
-      store.setStatus('Folding…', '#FF3B3B');
+      gs().setPlayState('folding');
+      gs().setStatus('Folding…', '#FF3B3B');
 
       const foldHash = await writeAndWait('fold', {
         address: HOLDEM_CONTRACT_ADDRESS, abi: CIPHER_HOLDEM_ABI,
@@ -409,23 +409,23 @@ export const useHoldemActions = () => {
       await sleep(800);
       const newBal = await readBalance();
       const delta = -10; // lost BB at minimum
-      store.finishHand({
+      gs().finishHand({
         result: 'FOLD',
         delta,
-        desc: `Folded at ${store.holdemRound}`,
+        desc: `Folded at ${gs().holdemRound}`,
         pot: 0,
         balance: newBal,
         txHash: foldHash,
-        playerCards: store.playerCards,
+        playerCards: gs().playerCards,
         botCards: [],
       });
     } catch (err) {
       console.error('[holdem:fold]', err);
-      store.setStatus('Fold failed.', '#FF3B3B');
+      gs().setStatus('Fold failed.', '#FF3B3B');
     } finally {
       actingRef.current = false;
     }
-  }, [isOnChain, store, writeAndWait, readBalance]);
+  }, [isOnChain, writeAndWait, readBalance]);
 
 
   const _finishHand = useCallback(async (tableId: bigint, desc: string, txHash = '' as `0x${string}`) => {
@@ -443,7 +443,7 @@ export const useHoldemActions = () => {
 
     const result: 'WON' | 'LOST' = playerWon ? 'WON' : 'LOST';
     const newBal = await readBalance();
-    const delta  = newBal - store.balance;
+    const delta  = newBal - gs().balance;
 
     GAME(`Result: ${result} | pot: ${potNum} | delta: ${delta > 0 ? '+' : ''}${delta}`);
 
@@ -458,25 +458,25 @@ export const useHoldemActions = () => {
       botCards = await Promise.all([b0, b1].map(h => decryptPublicCard(h)));
 
       // Evaluate bot's hand for display
-      if (botCards.length === 2 && store.communityCards.length >= 3) {
-        const allBot = [...botCards, ...store.communityCards];
+      if (botCards.length === 2 && gs().communityCards.length >= 3) {
+        const allBot = [...botCards, ...gs().communityCards];
         const ev = evaluate7(allBot);
-        store.setBotEval(ev);
+        gs().setBotEval(ev);
         GAME(`Bot hand: ${ev.name}`);
       }
     } catch {
       GAME('Bot cards not available');
     }
 
-    store.finishHand({
+    gs().finishHand({
       result, delta, desc,
       pot: potNum,
       balance: newBal,
       txHash,
-      playerCards: store.playerCards,
+      playerCards: gs().playerCards,
       botCards,
     });
-  }, [publicClient, address, store, readBalance, decryptPublicCard]);
+  }, [publicClient, address, readBalance, decryptPublicCard]);
 
 
   /**
@@ -485,11 +485,11 @@ export const useHoldemActions = () => {
    * Step 1/3: computeShowdownP1 · Step 2/3: computeShowdownP2 · Step 3/3: resolveShowdown
    */
   const _queueShowdown = useCallback((tableId: bigint) => {
-    store.setPlayState('showdown');
+    gs().setPlayState('showdown');
 
     // Queue TX1
     pendingTxFn.current = async () => {
-      store.setStatus('Computing showdown (1/3)…', '#00BFFF');
+      gs().setStatus('Computing showdown (1/3)…', '#00BFFF');
       await writeAndWait('computeShowdownP1', {
         address: HOLDEM_CONTRACT_ADDRESS, abi: CIPHER_HOLDEM_ABI,
         functionName: 'computeShowdownP1', args: [tableId],
@@ -497,14 +497,14 @@ export const useHoldemActions = () => {
 
       // Queue TX2
       pendingTxFn.current = async () => {
-        store.setStatus('Computing showdown (2/3)…', '#00BFFF');
+        gs().setStatus('Computing showdown (2/3)…', '#00BFFF');
         await writeAndWait('computeShowdownP2', {
           address: HOLDEM_CONTRACT_ADDRESS, abi: CIPHER_HOLDEM_ABI,
           functionName: 'computeShowdownP2', args: [tableId],
         });
 
         // Poll FHE — no wallet signature
-        store.setStatus('FHE computing winner… 0s', '#00BFFF');
+        gs().setStatus('FHE computing winner… 0s', '#00BFFF');
         const ready = await pollUntilTrue('showdown',
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           () => publicClient!.readContract({
@@ -512,17 +512,17 @@ export const useHoldemActions = () => {
             functionName: 'isShowdownReady', args: [tableId], account: address,
           } as any) as Promise<boolean>,
           POLL_MS, MAX_POLLS,
-          (sec) => store.setStatus(`FHE computing winner… ${sec}s`, '#00BFFF'),
+          (sec) => gs().setStatus(`FHE computing winner… ${sec}s`, '#00BFFF'),
         );
 
         if (!ready) {
-          store.setStatus('Showdown timed out.', '#FF3B3B');
+          gs().setStatus('Showdown timed out.', '#FF3B3B');
           return;
         }
 
         // Queue TX3
         pendingTxFn.current = async () => {
-          store.setStatus('Revealing winner…', '#00BFFF');
+          gs().setStatus('Revealing winner…', '#00BFFF');
           const hash = await writeAndWait('resolveShowdown', {
             address: HOLDEM_CONTRACT_ADDRESS, abi: CIPHER_HOLDEM_ABI,
             functionName: 'resolveShowdown', args: [tableId],
@@ -530,30 +530,30 @@ export const useHoldemActions = () => {
           await _finishHand(tableId, 'showdown', hash);
         };
 
-        store.setPlayState('confirmAction');
-        store.setStatus('FHE ready — tap REVEAL WINNER (3/3)', '#FFE03D');
+        gs().setPlayState('confirmAction');
+        gs().setStatus('FHE ready — tap REVEAL WINNER (3/3)', '#FFE03D');
       };
 
-      store.setPlayState('confirmAction');
-      store.setStatus('Tap COMPUTE SHOWDOWN (2/3)', '#FFE03D');
+      gs().setPlayState('confirmAction');
+      gs().setStatus('Tap COMPUTE SHOWDOWN (2/3)', '#FFE03D');
     };
 
-    store.setStatus('Tap COMPUTE SHOWDOWN (1/3)', '#FFE03D');
-    store.setPlayState('confirmAction');
-  }, [store, writeAndWait, publicClient, address, _finishHand]);
+    gs().setStatus('Tap COMPUTE SHOWDOWN (1/3)', '#FFE03D');
+    gs().setPlayState('confirmAction');
+  }, [writeAndWait, publicClient, address, _finishHand]);
 
 
   const _decryptCommunity = useCallback(async (tableId: bigint, count: number, round: Round) => {
     if (!publicClient) return;
-    store.setPlayState('decrypting');
+    gs().setPlayState('decrypting');
 
     const SYNC = round === 'flop' ? 15 : 10;
     for (let s = SYNC; s > 0; s--) {
-      store.setStatus(`Syncing ${ROUND_LABELS[round]} cards… ${s}s`, '#00BFFF');
+      gs().setStatus(`Syncing ${ROUND_LABELS[round]} cards… ${s}s`, '#00BFFF');
       await sleep(1000);
     }
 
-    store.setStatus(`Decrypting ${ROUND_LABELS[round]} cards…`, '#00BFFF');
+    gs().setStatus(`Decrypting ${ROUND_LABELS[round]} cards…`, '#00BFFF');
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const comm = await publicClient.readContract({
@@ -569,19 +569,19 @@ export const useHoldemActions = () => {
 
     for (let i = startIdx; i < startIdx + count; i++) {
       const cardId = await decryptPublicCard(comm[i]);
-      store.revealCommunityCard(cardId);
+      gs().revealCommunityCard(cardId);
       const d = getCardData(cardId);
       GAME(`Community[${i}] → ${d.rankString}${d.suit}`);
     }
 
     // Evaluate player's hand for display
-    if (store.playerCards.length >= 2 && store.communityCards.length >= 3) {
-      const allCards = [...store.playerCards, ...store.communityCards];
+    if (gs().playerCards.length >= 2 && gs().communityCards.length >= 3) {
+      const allCards = [...gs().playerCards, ...gs().communityCards];
       const ev = evaluate7(allCards);
-      store.setPlayerEval(ev);
+      gs().setPlayerEval(ev);
       GAME(`Player hand: ${ev.name}`);
     }
-  }, [publicClient, store, decryptPublicCard, address]);
+  }, [publicClient, decryptPublicCard, address]);
 
   return {
     startHand,
