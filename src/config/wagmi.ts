@@ -8,6 +8,11 @@ const SEPOLIA_RPC = import.meta.env.VITE_SEPOLIA_RPC_URL
 
 export const wagmiConfig = createConfig({
   chains: [sepolia],
+  // Disable EIP-6963 multi-provider discovery to prevent Nightly (and other
+  // wallets that announce themselves twice) from causing cascading React
+  // re-renders (error #185).  Users still connect via window.ethereum which
+  // every injected wallet provides.
+  multiInjectedProviderDiscovery: false,
   connectors: [
     injected(),
     metaMask(),
