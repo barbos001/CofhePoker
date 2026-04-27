@@ -1,11 +1,12 @@
 import { motion, AnimatePresence }   from 'framer-motion';
 import { useAccount, useDisconnect } from 'wagmi';
 import { useGameStore }              from '@/store/useGameStore';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo, memo } from 'react';
 import { PermitBadge, PermitDot }   from '@/components/ui/PermitIndicator';
-import { useVaultStore, formatEth, formatUsdt, ethWeiToUsd, usdtToUsd, formatUsd } from '@/store/useVaultStore';
+import { useVaultStore, ethWeiToUsd, usdtToUsd, formatUsd } from '@/store/useVaultStore';
 import { ETH_TOKEN, VAULT_DEPLOYED } from '@/config/vault';
-import { Swords, History, HelpCircle, Settings } from 'lucide-react';
+import { Swords, History, HelpCircle, Settings, User, Trophy } from 'lucide-react';
+import { NotificationBell } from '@/components/ui/NotificationBell';
 
 const truncateAddr = (addr: string) =>
   `${addr.slice(0, 6)}...${addr.slice(-4)}`;
@@ -29,7 +30,7 @@ const useUnreadHistory = (activeTab: string, history: { id: string }[]) => {
 };
 
 /* ── Notification dot badge ─────────────────────────────────────── */
-const NotifDot = ({ count }: { count: number }) => (
+const NotifDot = memo(({ count }: { count: number }) => (
   <AnimatePresence>
     {count > 0 && (
       <motion.div
@@ -51,44 +52,44 @@ const NotifDot = ({ count }: { count: number }) => (
       </motion.div>
     )}
   </AnimatePresence>
-);
+));
 
 const TABS = [
-  { key: 'play',     label: 'PLAY',     Icon: Swords,      showDot: false },
-  { key: 'history',  label: 'HISTORY',  Icon: History,     showDot: true  },
-  { key: 'help',     label: 'HELP',     Icon: HelpCircle,  showDot: false },
-  { key: 'settings', label: 'SETTINGS', Icon: Settings,    showDot: false },
+  { key: 'play',        label: 'PLAY',    Icon: Swords,      showDot: false },
+  { key: 'history',     label: 'HISTORY', Icon: History,     showDot: true  },
+  { key: 'profile',     label: 'PROFILE', Icon: User,        showDot: false },
+  { key: 'leaderboard', label: 'RANKS',   Icon: Trophy,      showDot: false },
+  { key: 'help',        label: 'HELP',    Icon: HelpCircle,  showDot: false },
+  { key: 'settings',    label: 'MORE',    Icon: Settings,    showDot: false },
 ] as const;
 
-const AnimatedChips = ({ value }: { value: number }) => {
+const AnimatedChips = memo(({ value }: { value: number }) => {
   const [display, setDisplay] = useState(value);
+  const rafRef = useRef<number>(0);
 
   useEffect(() => {
     if (value === display) return;
-    const diff = value - display;
-    const steps = 8;
-    const inc = diff / steps;
-    let step = 0;
-    const id = setInterval(() => {
-      step++;
-      if (step >= steps) {
-        setDisplay(value);
-        clearInterval(id);
-      } else {
-        setDisplay(prev => Math.round(prev + inc));
-      }
-    }, 30);
-    return () => clearInterval(id);
-  }, [value, display]);
+    const start = display;
+    const diff  = value - start;
+    const duration = 400; // ms
+    const startTime = performance.now();
 
-  return (
-    <motion.span key={display} initial={{ y: -2 }} animate={{ y: 0 }}>
-      {display.toLocaleString()}
-    </motion.span>
-  );
-};
+    const step = (now: number) => {
+      const t = Math.min(1, (now - startTime) / duration);
+      const eased = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t; // ease in-out quad
+      setDisplay(Math.round(start + diff * eased));
+      if (t < 1) rafRef.current = requestAnimationFrame(step);
+      else setDisplay(value);
+    };
 
-export const TopBar = () => {
+    rafRef.current = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return <span>{display.toLocaleString()}</span>;
+});
+
+export const TopBar = memo(() => {
   const activeTab        = useGameStore(s => s.activeTab);
   const setActiveTab     = useGameStore(s => s.setActiveTab);
   const balance          = useGameStore(s => s.balance);
@@ -107,8 +108,10 @@ export const TopBar = () => {
   const realMoneyMode    = useVaultStore(s => s.realMoneyMode);
 
   const displayAddr = walletAddr ? truncateAddr(walletAddr) : 'Not connected';
-  const wins = history.filter(h => h.result === 'WON').length;
-  const winRate = history.length > 0 ? Math.round((wins / history.length) * 100) : 0;
+  const { winRate } = useMemo(() => {
+    const w = history.filter(h => h.result === 'WON').length;
+    return { winRate: history.length > 0 ? Math.round((w / history.length) * 100) : 0 };
+  }, [history]);
 
   // Vault balance display (ETH or USDT depending on selected token)
   const vaultUsd = selectedToken === ETH_TOKEN
@@ -120,8 +123,10 @@ export const TopBar = () => {
       className="sticky top-0 z-40 w-full"
       style={{
         background:    'rgba(6,6,20,0.92)',
-        backdropFilter: 'blur(20px)',
+        backdropFilter: 'blur(16px)',
         borderBottom:  '1px solid rgba(255,255,255,0.12)',
+        willChange:    'transform',
+        contain:       'layout style',
       }}
     >
       <div className="h-16 flex items-center justify-between px-4 md:px-8 max-w-[1400px] mx-auto w-full">
@@ -204,6 +209,9 @@ export const TopBar = () => {
 
         {/* ── Right: Permit + Stats + Balance + Wallet ── */}
         <div className="flex items-center gap-2.5 shrink-0">
+          {/* Notification bell */}
+          <NotificationBell />
+
           {/* FHE Permit status — always visible */}
           <PermitBadge className="hidden sm:flex" />
 
@@ -304,9 +312,9 @@ export const TopBar = () => {
       </div>
     </header>
   );
-};
+});
 
-export const BottomTabBar = () => {
+export const BottomTabBar = memo(() => {
   const activeTab    = useGameStore(s => s.activeTab);
   const setActiveTab = useGameStore(s => s.setActiveTab);
   const balance      = useGameStore(s => s.balance);
@@ -319,8 +327,10 @@ export const BottomTabBar = () => {
       className="md:hidden fixed bottom-0 left-0 right-0 z-40 px-3 pb-2 pt-1.5"
       style={{
         background:    'rgba(6,6,20,0.96)',
-        backdropFilter: 'blur(20px)',
+        backdropFilter: 'blur(16px)',
         borderTop:     '1px solid rgba(255,255,255,0.12)',
+        willChange:    'transform',
+        contain:       'layout style',
       }}
     >
       {/* Mobile balance + permit row */}
@@ -377,7 +387,7 @@ export const BottomTabBar = () => {
       </div>
     </div>
   );
-};
+});
 
 export const NetworkGuard = () => {
   const { isConnected, chainId } = useAccount();

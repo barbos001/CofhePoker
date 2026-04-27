@@ -495,6 +495,198 @@ const HoldemResultOverlay = () => {
   );
 };
 
+// ── Hand strength meter ───────────────────────────────────────────────────────
+const HAND_STRENGTH: Record<string, number> = {
+  'High Card': 10, 'Pair': 28, 'Two Pair': 46,
+  'Three of a Kind': 62, 'Straight': 72, 'Flush': 80,
+  'Full House': 88, 'Four of a Kind': 94, 'Straight Flush': 100,
+};
+const HAND_COLOR = (pct: number) =>
+  pct >= 80 ? '#FFE03D' : pct >= 60 ? '#00E86C' : pct >= 35 ? '#00BFFF' : 'rgba(255,255,255,0.4)';
+
+const HandStrengthMeter = ({ evalName }: { evalName: string | undefined }) => {
+  if (!evalName) return null;
+  const pct = HAND_STRENGTH[evalName] ?? 15;
+  const color = HAND_COLOR(pct);
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+      className="w-full max-w-[360px] flex flex-col gap-1.5 mb-3"
+    >
+      <div className="flex items-center justify-between">
+        <span className="font-mono text-[10px] tracking-widest uppercase" style={{ color: 'rgba(255,255,255,0.3)' }}>
+          Hand Strength
+        </span>
+        <span className="font-mono text-[11px] font-bold" style={{ color }}>{pct}%</span>
+      </div>
+      <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
+        <motion.div
+          className="h-full rounded-full"
+          initial={{ width: 0 }}
+          animate={{ width: `${pct}%` }}
+          transition={{ duration: 0.5, ease: 'easeOut' }}
+          style={{ background: color, boxShadow: `0 0 8px ${color}60` }}
+        />
+      </div>
+      <span className="font-mono text-[10px]" style={{ color }}>{evalName}</span>
+    </motion.div>
+  );
+};
+
+// ── Pot odds display ──────────────────────────────────────────────────────────
+const PotOddsDisplay = ({ pot, callAmount }: { pot: number; callAmount: number }) => {
+  if (pot <= 0 || callAmount <= 0) return null;
+  const equity = Math.round((callAmount / (pot + callAmount)) * 100);
+  const ratio = Math.round(pot / callAmount);
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
+      className="flex items-center gap-3 mb-3 px-4 py-2 rounded-xl font-mono text-[11px] tracking-wider"
+      style={{ background: 'rgba(255,140,66,0.06)', border: '1px solid rgba(255,140,66,0.15)' }}
+    >
+      <span style={{ color: 'rgba(255,255,255,0.4)' }}>Pot odds:</span>
+      <span style={{ color: '#FF8C42', fontWeight: 600 }}>1:{ratio}</span>
+      <span style={{ color: 'rgba(255,255,255,0.3)' }}>·</span>
+      <span style={{ color: 'rgba(255,255,255,0.4)' }}>Need</span>
+      <span style={{ color: '#FF8C42', fontWeight: 600 }}>&gt;{equity}% equity</span>
+    </motion.div>
+  );
+};
+
+// ── Bet size slider ───────────────────────────────────────────────────────────
+const BetControls = ({
+  pot, balance, playState, holdemRound,
+  onCheck, onBet, onRaise, onFold,
+}: {
+  pot: number; balance: number;
+  playState: string; holdemRound: string | null;
+  onCheck: () => void; onBet: () => void; onRaise: () => void; onFold: () => void;
+}) => {
+  const BB = 10;
+  const halfPot = Math.max(BB, Math.floor(pot / 2));
+  const fullPot = Math.max(BB, pot);
+  const allIn   = balance;
+
+  const [betSize, setBetSize] = useState(BB);
+  const isDisabled = playState !== 'playerTurn';
+
+  // Map slider value to action
+  const isRaise = betSize >= fullPot;
+  const effectiveAction = isRaise ? 'RAISE' : 'BET';
+  const effectiveAmount = isRaise ? (fullPot || BB * 2) : (halfPot || BB);
+
+  const presets = [
+    { label: 'MIN',  value: BB,       hint: `${BB}` },
+    { label: '½ POT', value: halfPot, hint: `${halfPot}` },
+    { label: 'POT',  value: fullPot,  hint: `${fullPot}` },
+    { label: 'ALL-IN', value: allIn,  hint: `${allIn}` },
+  ];
+
+  const roundLabel = holdemRound
+    ? { preflop: 'Pre-Flop', flop: 'Flop', turn: 'Turn', river: 'River' }[holdemRound] ?? holdemRound
+    : '';
+
+  return (
+    <div className="flex flex-col items-center gap-3 w-full max-w-[480px]">
+      {/* Round label */}
+      {holdemRound && (
+        <div className="px-3 py-1 rounded-full font-mono text-[11px] tracking-widest uppercase"
+          style={{ background: 'rgba(0,191,255,0.08)', border: '1px solid rgba(0,191,255,0.2)', color: '#00BFFF' }}>
+          {roundLabel}
+        </div>
+      )}
+
+      {/* Bet size slider */}
+      <div className="w-full flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <div>
+            <span className="font-mono text-[10px] tracking-widest uppercase" style={{ color: 'rgba(255,255,255,0.3)' }}>Bet Size</span>
+            <span className="font-mono text-[9px] tracking-wide ml-2" style={{ color: 'rgba(255,255,255,0.2)' }}>(indicative only)</span>
+          </div>
+          <span className="font-mono text-[12px] font-bold" style={{ color: isRaise ? 'var(--color-primary)' : '#00BFFF' }}>
+            {betSize} chips · {effectiveAction}
+          </span>
+        </div>
+        <input
+          type="range"
+          min={BB}
+          max={Math.max(BB + 1, allIn)}
+          value={betSize}
+          onChange={e => setBetSize(Number(e.target.value))}
+          disabled={isDisabled}
+          className="w-full h-1.5 rounded-full appearance-none cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+          style={{
+            background: `linear-gradient(to right, ${isRaise ? 'var(--color-primary)' : '#00BFFF'} ${((betSize - BB) / Math.max(1, allIn - BB)) * 100}%, rgba(255,255,255,0.1) 0%)`,
+            accentColor: isRaise ? 'var(--color-primary)' : '#00BFFF',
+          }}
+        />
+        {/* Presets */}
+        <div className="flex gap-1.5 justify-center flex-wrap">
+          {presets.map(p => (
+            <button
+              key={p.label}
+              onClick={() => setBetSize(p.value)}
+              disabled={isDisabled}
+              className="h-7 px-3 rounded-full font-mono text-[10px] tracking-widest uppercase transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{
+                background: betSize === p.value ? 'rgba(0,191,255,0.15)' : 'rgba(255,255,255,0.05)',
+                border: betSize === p.value ? '1px solid rgba(0,191,255,0.4)' : '1px solid rgba(255,255,255,0.08)',
+                color: betSize === p.value ? '#00BFFF' : 'rgba(255,255,255,0.4)',
+              }}
+            >
+              {p.label} <span style={{ opacity: 0.6 }}>{p.hint}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Main action buttons */}
+      <div className="flex gap-2 flex-wrap justify-center">
+        <MagneticBtn
+          onClick={onCheck}
+          disabled={isDisabled}
+          className="h-12 px-6 rounded-full font-mono text-sm font-bold tracking-widest uppercase flex items-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          style={{
+            background: 'rgba(255,255,255,0.08)',
+            color: '#fff',
+            border: '1.5px solid rgba(255,255,255,0.15)',
+            boxShadow: !isDisabled ? '0 0 16px rgba(255,255,255,0.05)' : 'none',
+          }}
+        >
+          CHECK
+        </MagneticBtn>
+
+        <MagneticBtn
+          onClick={isRaise ? onRaise : onBet}
+          disabled={isDisabled}
+          className="h-12 px-6 rounded-full font-mono text-sm font-bold tracking-widest uppercase flex items-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          style={{
+            background: isRaise ? 'var(--color-primary)' : '#00BFFF',
+            color: '#000',
+            boxShadow: !isDisabled ? `0 0 24px ${isRaise ? 'rgba(255,224,61,0.25)' : 'rgba(0,191,255,0.25)'}` : 'none',
+          }}
+        >
+          {effectiveAction}
+          <span className="text-xs opacity-70">({effectiveAmount})</span>
+        </MagneticBtn>
+
+        <MagneticBtn
+          onClick={onFold}
+          disabled={isDisabled}
+          className="h-12 px-6 rounded-full font-mono text-sm font-bold tracking-widest uppercase flex items-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          style={{
+            background: 'transparent', color: 'var(--color-danger)',
+            border: '1.5px solid rgba(255,59,59,0.35)',
+            boxShadow: !isDisabled ? '0 0 20px rgba(255,59,59,0.1)' : 'none',
+          }}
+        >
+          FOLD
+        </MagneticBtn>
+      </div>
+    </div>
+  );
+};
+
 export const HoldemTab = () => {
   const { playState, statusMsg, pot, balance, playerCards, botCards, communityCards, history, holdemRound, playerEval } = useGameStore();
   const { startHand, actPreflop, actFlop, actTurn, actRiver, callBot, fold, confirmNext, isOnChain } = useHoldemActions();
@@ -849,55 +1041,43 @@ export const HoldemTab = () => {
       {/* Turn timer */}
       <TurnTimer seconds={turnTimeLeft} active={turnTimerActive} />
 
-      {/* Round indicator */}
-      {/* Round indicator */}
-      {playState === 'playerTurn' && holdemRound && (
-        <motion.div
-          initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
-          className="mb-3 px-4 py-1.5 rounded-full font-mono text-[11px] tracking-widest uppercase"
-          style={{
-            background: 'rgba(0,191,255,0.08)',
-            border: '1px solid rgba(0,191,255,0.2)',
-            color: '#00BFFF',
-          }}
-        >
-          {holdemRound === 'preflop' ? 'Pre-Flop' : holdemRound === 'flop' ? 'Flop' : holdemRound === 'turn' ? 'Turn' : 'River'}
-          {waitingForCall && ' — Bot bet!'}
-        </motion.div>
-      )}
+      {/* Hand strength meter — shown during player turn at flop/turn/river */}
+      <AnimatePresence>
+        {playState === 'playerTurn' && playerEval && holdemRound && holdemRound !== 'preflop' && (
+          <HandStrengthMeter evalName={playerEval.name} />
+        )}
+      </AnimatePresence>
 
-      {/* Action buttons */}
-      <div className="flex gap-3 mt-4 relative z-10">
+      {/* Pot odds — when waiting for call */}
+      <AnimatePresence>
+        {waitingForCall && pot > 0 && (
+          <PotOddsDisplay pot={pot} callAmount={10} />
+        )}
+      </AnimatePresence>
+
+      {/* Action area */}
+      <div className="flex flex-col items-center gap-3 mt-4 relative z-10 w-full">
         {playState === 'confirmAction' ? (
-          /* Queued TX — user must confirm to send next wallet signature */
           <MagneticBtn
             onClick={confirmNext}
             className="h-12 px-12 rounded-full font-mono text-sm font-bold tracking-widest uppercase flex items-center gap-2 transition-all relative overflow-hidden"
-            style={{
-              background: '#00BFFF',
-              color: '#000',
-              boxShadow: '0 0 28px rgba(0,191,255,0.4)',
-            }}
+            style={{ background: '#00BFFF', color: '#000', boxShadow: '0 0 28px rgba(0,191,255,0.4)' }}
           >
             PROCEED
           </MagneticBtn>
         ) : waitingForCall ? (
-          /* Bot bet → player must CALL or FOLD */
-          <>
+          <div className="flex gap-3">
             <MagneticBtn
               onClick={callBot}
               disabled={playState !== 'playerTurn'}
-              className="h-12 px-10 rounded-full font-mono text-sm font-bold tracking-widest uppercase flex items-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed relative overflow-hidden"
+              className="h-12 px-10 rounded-full font-mono text-sm font-bold tracking-widest uppercase flex items-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               style={{
-                background: 'var(--color-success)',
-                color: '#000',
+                background: 'var(--color-success)', color: '#000',
                 boxShadow: playState === 'playerTurn' ? '0 0 24px rgba(0,232,108,0.25)' : 'none',
               }}
             >
-              CALL
-              <span className="text-xs opacity-70">(10)</span>
+              CALL <span className="text-xs opacity-70">(10)</span>
             </MagneticBtn>
-
             <MagneticBtn
               onClick={fold}
               disabled={playState !== 'playerTurn'}
@@ -910,65 +1090,18 @@ export const HoldemTab = () => {
             >
               FOLD
             </MagneticBtn>
-          </>
+          </div>
         ) : (
-          /* Normal action: CHECK / BET / RAISE / FOLD */
-          <>
-            <MagneticBtn
-              onClick={handleCheck}
-              disabled={playState !== 'playerTurn'}
-              className="h-12 px-6 rounded-full font-mono text-sm font-bold tracking-widest uppercase flex items-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed relative overflow-hidden"
-              style={{
-                background: 'rgba(255,255,255,0.08)',
-                color: '#fff',
-                border: '1.5px solid rgba(255,255,255,0.15)',
-                boxShadow: playState === 'playerTurn' ? '0 0 16px rgba(255,255,255,0.05)' : 'none',
-              }}
-            >
-              CHECK
-            </MagneticBtn>
-
-            <MagneticBtn
-              onClick={handleBet}
-              disabled={playState !== 'playerTurn'}
-              className="h-12 px-6 rounded-full font-mono text-sm font-bold tracking-widest uppercase flex items-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed relative overflow-hidden"
-              style={{
-                background: '#00BFFF',
-                color: '#000',
-                boxShadow: playState === 'playerTurn' ? '0 0 24px rgba(0,191,255,0.25)' : 'none',
-              }}
-            >
-              BET
-              <span className="text-xs opacity-70">(10)</span>
-            </MagneticBtn>
-
-            <MagneticBtn
-              onClick={handleRaise}
-              disabled={playState !== 'playerTurn'}
-              className="h-12 px-6 rounded-full font-mono text-sm font-bold tracking-widest uppercase flex items-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed relative overflow-hidden"
-              style={{
-                background: 'var(--color-primary)',
-                color: '#000',
-                boxShadow: playState === 'playerTurn' ? '0 0 24px rgba(255,224,61,0.25)' : 'none',
-              }}
-            >
-              RAISE
-              <span className="text-xs opacity-70">(20)</span>
-            </MagneticBtn>
-
-            <MagneticBtn
-              onClick={fold}
-              disabled={playState !== 'playerTurn'}
-              className="h-12 px-6 rounded-full font-mono text-sm font-bold tracking-widest uppercase flex items-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-              style={{
-                background: 'transparent', color: 'var(--color-danger)',
-                border: '1.5px solid rgba(255,59,59,0.35)',
-                boxShadow: playState === 'playerTurn' ? '0 0 20px rgba(255,59,59,0.1)' : 'none',
-              }}
-            >
-              FOLD
-            </MagneticBtn>
-          </>
+          <BetControls
+            pot={pot}
+            balance={balance}
+            playState={playState}
+            holdemRound={holdemRound}
+            onCheck={handleCheck}
+            onBet={handleBet}
+            onRaise={handleRaise}
+            onFold={fold}
+          />
         )}
       </div>
 

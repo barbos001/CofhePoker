@@ -6,7 +6,33 @@ import { CONTRACT_ADDRESS } from '@/config/contract';
 import { useCofhe } from '@/hooks/useCofhe';
 import { useVaultStore } from '@/store/useVaultStore';
 import { VAULT_DEPLOYED } from '@/config/vault';
-import { Key, Wallet, CreditCard, Zap, Gamepad2, Volume2, Shield, BarChart2, FileCode, Info } from 'lucide-react';
+import { Key, Wallet, CreditCard, Zap, Gamepad2, Volume2, Shield, BarChart2, FileCode, Info, Users, Target, Download } from 'lucide-react';
+import { ChallengesPanel } from '@/components/ui/ChallengesPanel';
+import { claimReferralBonus } from '@/lib/db';
+import { isSupabaseEnabled } from '@/config/supabase';
+
+// ── PWA install prompt hook ───────────────────────────────────────────────────
+function usePWAInstall() {
+  const [prompt, setPrompt] = useState<any>(null);
+  const [installed, setInstalled] = useState(false);
+
+  useEffect(() => {
+    const handler = (e: Event) => { e.preventDefault(); setPrompt(e); };
+    window.addEventListener('beforeinstallprompt', handler);
+    window.addEventListener('appinstalled', () => { setInstalled(true); setPrompt(null); });
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  const install = useCallback(async () => {
+    if (!prompt) return;
+    prompt.prompt();
+    const { outcome } = await prompt.userChoice;
+    if (outcome === 'accepted') setInstalled(true);
+    setPrompt(null);
+  }, [prompt]);
+
+  return { canInstall: !!prompt, installed, install };
+}
 
 const ETHERSCAN = 'https://sepolia.etherscan.io';
 
@@ -159,6 +185,114 @@ const StatusBadge = ({ active, label }: { active: boolean; label: string }) => (
   </span>
 );
 
+// ── Referral section ──────────────────────────────────────────────────────────
+const REFERRAL_BONUS = 200;
+const ReferralSection = ({
+  address, balance, setBalance,
+}: { address: string | undefined; balance: number; setBalance: (n: number) => void }) => {
+  const [copied,  setCopied]  = useState(false);
+  const [claimed, setClaimed] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [denied,  setDenied]  = useState(false);
+
+  const refLink    = address ? `${window.location.origin}?ref=${address}` : '';
+  const referredBy = localStorage.getItem('cofhe-referred-by');
+  const isEligible = !!referredBy && !claimed && !denied;
+
+  const copy = useCallback(async () => {
+    if (!refLink) return;
+    await navigator.clipboard.writeText(refLink);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [refLink]);
+
+  const claimBonus = useCallback(async () => {
+    if (!isEligible || !address || loading) return;
+    setLoading(true);
+
+    if (isSupabaseEnabled) {
+      const ok = await claimReferralBonus(address, referredBy!);
+      if (ok) {
+        setBalance(balance + REFERRAL_BONUS);
+        setClaimed(true);
+        localStorage.removeItem('cofhe-referred-by'); // clean up after claim
+      } else {
+        setDenied(true); // server says already claimed
+      }
+    } else {
+      // Offline fallback — mark locally
+      localStorage.setItem('cofhe-ref-bonus-claimed', '1');
+      setBalance(balance + REFERRAL_BONUS);
+      setClaimed(true);
+    }
+    setLoading(false);
+  }, [isEligible, address, loading, balance, setBalance, referredBy]);
+
+  return (
+    <div className="flex flex-col gap-4 py-2">
+      {address && (
+        <>
+          <div>
+            <span style={{ fontFamily: "'Chakra Petch', sans-serif", fontWeight: 600, fontSize: 13, color: 'white' }}>
+              Your Referral Link
+            </span>
+            <p style={{ fontFamily: "'Chakra Petch', sans-serif", fontWeight: 400, fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 4, lineHeight: 1.5 }}>
+              Share this link. When a new player joins via your link, both get {REFERRAL_BONUS} bonus chips.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex-1 px-3 py-2 rounded-lg font-mono text-[11px] truncate"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.5)' }}>
+              {refLink}
+            </div>
+            <button onClick={copy}
+              className="shrink-0 px-3 py-2 rounded-lg font-mono text-[11px] tracking-widest uppercase font-bold transition-all"
+              style={{ background: copied ? 'rgba(0,232,108,0.12)' : 'rgba(0,191,255,0.08)', border: `1px solid ${copied ? 'rgba(0,232,108,0.3)' : 'rgba(0,191,255,0.25)'}`, color: copied ? 'var(--color-success)' : '#00BFFF' }}>
+              {copied ? '✓ Copied' : 'Copy'}
+            </button>
+          </div>
+        </>
+      )}
+
+      {isEligible && (
+        <div className="flex items-center justify-between px-4 py-3 rounded-xl"
+          style={{ background: 'rgba(255,224,61,0.06)', border: '1px solid rgba(255,224,61,0.15)' }}>
+          <div>
+            <div style={{ fontFamily: "'Chakra Petch', sans-serif", fontWeight: 600, fontSize: 13, color: '#FFE03D' }}>
+              Referred by {referredBy?.slice(0, 6)}…{referredBy?.slice(-4)}
+            </div>
+            <div style={{ fontFamily: "'Chakra Petch', sans-serif", fontWeight: 400, fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>
+              Claim {REFERRAL_BONUS} bonus chips (verified on server)
+            </div>
+          </div>
+          <button onClick={claimBonus} disabled={loading}
+            className="px-4 py-2 rounded-full font-mono text-[11px] font-bold uppercase disabled:opacity-50"
+            style={{ background: 'var(--color-primary)', color: '#000' }}>
+            {loading ? '...' : 'Claim ✦'}
+          </button>
+        </div>
+      )}
+      {denied && (
+        <div className="px-4 py-3 rounded-xl font-mono text-[11px]"
+          style={{ background: 'rgba(255,59,59,0.08)', border: '1px solid rgba(255,59,59,0.2)', color: 'var(--color-danger)' }}>
+          Referral bonus already claimed for this account
+        </div>
+      )}
+
+      {claimed && (
+        <div className="px-4 py-3 rounded-xl font-mono text-[11px]"
+          style={{ background: 'rgba(0,232,108,0.08)', border: '1px solid rgba(0,232,108,0.2)', color: 'var(--color-success)' }}>
+          ✓ Bonus claimed! +{REFERRAL_BONUS} chips added
+        </div>
+      )}
+
+      <div style={{ fontFamily: "'Chakra Petch', sans-serif", fontWeight: 400, fontSize: 11, color: 'rgba(255,255,255,0.25)' }}>
+        Referral stats: {localStorage.getItem('cofhe-ref-count') ?? 0} players referred
+      </div>
+    </div>
+  );
+};
+
 const Section = ({
   id,
   title,
@@ -276,6 +410,8 @@ const SIDEBAR_SECTIONS = [
   { id: 'sound',    Icon: Volume2,    label: 'Sound' },
   { id: 'security', Icon: Shield,     label: 'Security' },
   { id: 'stats',    Icon: BarChart2,  label: 'Statistics' },
+  { id: 'challenges', Icon: Target,   label: 'Challenges' },
+  { id: 'referral',   Icon: Users,    label: 'Referral' },
   { id: 'contract', Icon: FileCode,   label: 'Contract' },
   { id: 'about',    Icon: Info,       label: 'About' },
 ];
@@ -293,7 +429,7 @@ function toAgo(ts: number | null): string {
 }
 
 export const SettingsTab = () => {
-  const { balance, history, setAppState, permitStatus, permitError, setPermitStatus, setPermitError,
+  const { balance, history, setAppState, setBalance, permitStatus, permitError, setPermitStatus, setPermitError,
           sessionStartedAt, lastDecryptAt } = useGameStore();
   const { address, isConnected, chainId } = useAccount();
   const { disconnect } = useDisconnect();
@@ -358,6 +494,10 @@ export const SettingsTab = () => {
   const [soundOn, _setSoundOn] = useState(() => readBool('poker_soundOn', false));
   const [showAnimations, _setShowAnimations] = useState(() => readBool('poker_showAnimations', true));
   const [tableSkin, _setTableSkin] = useState(() => readStr('poker_tableSkin', 'classic'));
+  const [lightMode, _setLightMode] = useState(() => readBool('poker_lightMode', false));
+
+  // PWA install
+  const { canInstall, installed: pwaInstalled, install: installPWA } = usePWAInstall();
 
   // Security
   const [autoLogout, _setAutoLogout] = useState(() => readStr('poker_autoLogout', '30'));
@@ -381,6 +521,16 @@ export const SettingsTab = () => {
   const setTurnTimer = persistStr('poker_turnTimer', _setTurnTimer);
   const setTableSkin = persistStr('poker_tableSkin', _setTableSkin);
   const setAutoLogout = persistStr('poker_autoLogout', _setAutoLogout);
+  const setLightMode = (v: boolean) => {
+    _setLightMode(v);
+    localStorage.setItem('poker_lightMode', String(v));
+    document.documentElement.classList.toggle('light', v);
+  };
+
+  // Apply light mode on mount
+  useEffect(() => {
+    document.documentElement.classList.toggle('light', lightMode);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-logout on inactivity
   const lastActivityRef = useRef(Date.now());
@@ -824,6 +974,42 @@ export const SettingsTab = () => {
           ]}
           onChange={setTableSkin}
         />
+        <Toggle
+          on={lightMode}
+          onToggle={() => setLightMode(!lightMode)}
+          label="Light Mode"
+          desc="Switch to a light color scheme"
+        />
+        {/* PWA Install */}
+        {(canInstall || pwaInstalled) && (
+          <div className="flex items-center justify-between py-4" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+            <div className="flex flex-col gap-0.5 pr-4">
+              <span style={{ fontFamily: "'Chakra Petch', sans-serif", fontWeight: 600, fontSize: 14, letterSpacing: '0.03em', color: 'white' }}>
+                Install App
+              </span>
+              <span style={{ fontFamily: "'Chakra Petch', sans-serif", fontWeight: 400, fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>
+                {pwaInstalled ? 'CipherPoker is installed' : 'Add to home screen for offline play'}
+              </span>
+            </div>
+            {!pwaInstalled && (
+              <button
+                onClick={installPWA}
+                className="flex items-center gap-1.5 shrink-0 uppercase transition-colors"
+                style={{
+                  fontFamily: "'Chakra Petch', sans-serif", fontWeight: 600, fontSize: 12,
+                  letterSpacing: '0.1em', color: '#00BFFF',
+                  border: '1px solid rgba(0,191,255,0.3)', borderRadius: 6,
+                  padding: '4px 14px', background: 'rgba(0,191,255,0.07)',
+                }}
+              >
+                <Download size={11} /> Install
+              </button>
+            )}
+            {pwaInstalled && (
+              <span style={{ fontFamily: "'Chakra Petch', sans-serif", fontWeight: 600, fontSize: 11, color: '#00E86C' }}>✓ Installed</span>
+            )}
+          </div>
+        )}
       </Section>
 
       {/* ═══════════════════════════════════════════════════════════════════
@@ -902,6 +1088,36 @@ export const SettingsTab = () => {
           value={`${totalDelta >= 0 ? '+' : ''}${totalDelta} chips`}
           color={totalDelta >= 0 ? 'var(--color-success)' : 'var(--color-danger)'}
         />
+      </Section>
+
+      {/* ═══════════════════════════════════════════════════════════════════
+          🎯  CHALLENGES
+          ═══════════════════════════════════════════════════════════════════ */}
+      <Section
+        id="challenges"
+        title="Daily & Weekly Challenges"
+        icon="🎯"
+        accentColor="#FFE03D"
+        delay={0.34}
+        collapsible
+        defaultOpen={false}
+      >
+        <ChallengesPanel />
+      </Section>
+
+      {/* ═══════════════════════════════════════════════════════════════════
+          👥  REFERRAL
+          ═══════════════════════════════════════════════════════════════════ */}
+      <Section
+        id="referral"
+        title="Referral Program"
+        icon="👥"
+        accentColor="#00BFFF"
+        delay={0.35}
+        collapsible
+        defaultOpen={false}
+      >
+        <ReferralSection address={address} balance={balance} setBalance={setBalance} />
       </Section>
 
       {/* ═══════════════════════════════════════════════════════════════════

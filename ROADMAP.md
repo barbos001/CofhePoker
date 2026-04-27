@@ -89,7 +89,7 @@
 
 ---
 
-## Wave 3 — Game Completeness + Stats + Profile
+## Wave 3 ✅ COMPLETE — Game Completeness + Stats + Profile
 
 **Goal:** All 4 game modes fully polished, deep stats, profile system.
 
@@ -138,7 +138,7 @@
 
 ---
 
-## Wave 4 — Real Money + Social + Economy
+## Wave 4 ✅ COMPLETE — Real Money + Social + Economy
 
 **Goal:** Full real-money ecosystem, chat, spectators, daily challenges.
 
@@ -193,7 +193,7 @@
 
 ---
 
-## Wave 5 — Production Polish + Platform
+## Wave 5 ✅ COMPLETE — Production Polish + Platform
 
 **Goal:** Production-ready, installable PWA, multi-table, SEO, admin.
 

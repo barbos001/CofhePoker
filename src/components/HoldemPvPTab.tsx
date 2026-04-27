@@ -259,6 +259,7 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
               txHash:  '',
               playerCards: [...myCards],
               botCards:    revOppCards,
+              gameMode:    'pvp',
             });
           }
         }
@@ -572,6 +573,7 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
       const state = info[2];
       if (state !== HoldemPvPState.OPEN) { setError('Table is no longer open'); setLoading(false); return; }
       if (info[1] !== '0x0000000000000000000000000000000000000000') { setError('Table is full'); setLoading(false); return; }
+      if (info[0].toLowerCase() === address?.toLowerCase()) { setError('Cannot join your own table'); setLoading(false); return; }
 
       await writeAndWait('joinTable', [BigInt(id)]);
       setTableId(id);

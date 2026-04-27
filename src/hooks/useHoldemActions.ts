@@ -418,6 +418,7 @@ export const useHoldemActions = () => {
         txHash: foldHash,
         playerCards: gs().playerCards,
         botCards: [],
+        gameMode: 'holdem',
       });
     } catch (err) {
       console.error('[holdem:fold]', err);
@@ -475,6 +476,7 @@ export const useHoldemActions = () => {
       txHash,
       playerCards: gs().playerCards,
       botCards,
+      gameMode: 'holdem',
     });
   }, [publicClient, address, readBalance, decryptPublicCard]);
 

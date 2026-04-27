@@ -4,16 +4,48 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/logo.png" />
     <link rel="apple-touch-icon" href="/logo.png" />
+    <link rel="manifest" href="/manifest.json" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Cofhe Poker" />
+    <meta name="theme-color" content="#FFE03D" />
+
+    <!-- SEO -->
+    <meta name="description" content="Fully on-chain FHE-encrypted poker. 4 game modes. Zero trust, zero servers, pure cryptography on Ethereum Sepolia." />
+    <meta name="keywords" content="FHE, poker, on-chain, blockchain, Fhenix, CoFHE, zero trust, encrypted" />
+    <meta name="robots" content="index, follow" />
+
+    <!-- Open Graph -->
     <meta property="og:title" content="Cofhe Poker | FHE Encrypted On-Chain Poker" />
     <meta property="og:description" content="Fully on-chain 3-card poker with FHE encryption. Zero trust, zero servers, pure cryptography." />
     <meta property="og:image" content="/logo.png" />
     <meta property="og:type" content="website" />
-    <meta name="twitter:card" content="summary" />
-    <meta name="twitter:title" content="Cofhe Poker" />
+    <meta property="og:url" content="https://cofhe-poker.vercel.app" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Cofhe Poker | FHE On-Chain Poker" />
+    <meta name="twitter:description" content="Play poker with FHE encryption on Ethereum Sepolia. Your cards are encrypted — even the server can't see them." />
     <meta name="twitter:image" content="/logo.png" />
+
+    <!-- Structured data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "Cofhe Poker",
+      "description": "Fully on-chain FHE-encrypted poker platform",
+      "url": "https://cofhe-poker.vercel.app",
+      "applicationCategory": "GameApplication",
+      "operatingSystem": "Web",
+      "offers": { "@type": "Offer", "price": "0" }
+    }
+    </script>
+
     <title>Cofhe Poker | FHE Encrypted On-Chain Poker</title>
-    
+
     <!-- Google Fonts: Chakra Petch — sole typeface -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -22,5 +54,13 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Register service worker for PWA
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch(() => {});
+        });
+      }
+    </script>
   </body>
 </html>

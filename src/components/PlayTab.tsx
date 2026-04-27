@@ -423,6 +423,31 @@ const ConfettiParticles = () => {
   );
 };
 
+const ShareButton = ({ handResult, evalName }: { handResult: string; evalName?: string }) => {
+  const [shared, setShared] = useState(false);
+  const text = handResult === 'WON'
+    ? `I just won at CipherPoker${evalName ? ` with a ${evalName}` : ''}! 🃏 Play FHE poker on Sepolia — ${window.location.origin}`
+    : `Playing CipherPoker — FHE poker on-chain! 🃏 ${window.location.origin}`;
+
+  const share = async () => {
+    if (navigator.share) {
+      try { await navigator.share({ title: 'CipherPoker', text }); } catch {}
+    } else {
+      await navigator.clipboard.writeText(text);
+      setShared(true);
+      setTimeout(() => setShared(false), 2000);
+    }
+  };
+
+  return (
+    <button onClick={share}
+      className="font-mono text-[11px] tracking-widest uppercase transition-all px-4 py-2 rounded-full"
+      style={{ background: 'rgba(179,102,255,0.08)', border: '1px solid rgba(179,102,255,0.25)', color: '#B366FF' }}>
+      {shared ? '✓ Copied' : '↗ Share'}
+    </button>
+  );
+};
+
 const ResultOverlay = () => {
   const { playState, handResult, balance, playerEval, botEval, resetToLobby, playerCards, botCards, lastPayout } = useGameStore();
   const { startHand } = useGameActions();
@@ -582,9 +607,12 @@ const ResultOverlay = () => {
             Balance: {balance.toLocaleString()}
           </div>
           <PlayCTA onClick={startHand} text="DEAL NEXT" className="text-xl" />
-          <button onClick={resetToLobby} className="font-mono text-xs transition-colors mt-2 hover:text-white" style={{ color: 'var(--color-text-dark)' }}>
-            Leave
-          </button>
+          <div className="flex items-center gap-3">
+            {isWin && <ShareButton handResult={handResult} evalName={playerEval?.name} />}
+            <button onClick={resetToLobby} className="font-mono text-xs transition-colors hover:text-white" style={{ color: 'var(--color-text-dark)' }}>
+              Leave
+            </button>
+          </div>
         </div>
       </motion.div>
     </motion.div>

@@ -4,7 +4,7 @@
 
 **Fully on-chain poker with FHE-encrypted cards — powered by Fhenix CoFHE**
 
-`4 contracts` · `700+ FHE ops per hand` · `4 game modes` · `35M gas showdowns` · `all deployed on Sepolia`
+`6 contracts` · `700+ FHE ops per hand` · `4 game modes` · `35M gas showdowns` · `128 E2E tests` · `Supabase backend` · `Sepolia`
 
 [![Ethereum Sepolia](https://img.shields.io/badge/Network-Ethereum_Sepolia-blue)](https://sepolia.etherscan.io)
 [![CoFHE SDK](https://img.shields.io/badge/CoFHE_SDK-0.4.0-green)](https://www.npmjs.com/package/@cofhe/sdk)
@@ -239,6 +239,7 @@ The bot on turn/river uses only pair count (not full evaluation) because full 6-
 | Wallet | wagmi v2 + viem | Wallet connection + contract calls |
 | Styling | Tailwind CSS 4 + Framer Motion | UI + animations |
 | State | Zustand | Client-side state management |
+| Backend | Supabase (Postgres + Realtime) | Leaderboard, profiles, PvP chat, hand history |
 | Network | Ethereum Sepolia (11155111) | Testnet deployment |
 
 ---
@@ -251,6 +252,8 @@ The bot on turn/river uses only pair count (not full evaluation) because full 6-
 | `CofhePokerPvP` | [`0x7662...247d`](https://sepolia.etherscan.io/address/0x76627a7A86C4Da6386f09b52cc8EC14C5EaC247d) | ~80 | Lobby, private rooms, invite codes, friend system |
 | `CofheHoldem` | [`0xA01a...CEBe`](https://sepolia.etherscan.io/address/0xA01aDb97b1D1ad67a4295B8Ae0c525Affd74CEBe) | ~500 | 4-round eval (2/5/6/7 cards), per-street bot AI |
 | `CofheHoldemPvP` | [`0x309D...27e9`](https://sepolia.etherscan.io/address/0x309Dd767C98eb52C84ff44389A2066385b9C27e9) | ~700 | All-in, side pots, dealer rotation, timeouts, EIP-712 |
+| `Vault` | [`0x78F7...1a19`](https://sepolia.etherscan.io/address/0x78F7519411AaE1d2679E054690d46F8B1C441a19) | — | ETH/USDT deposits, Chainlink oracle, lock/settle |
+| `MockUSDT` | [`0x5da0...A19b`](https://sepolia.etherscan.io/address/0x5da0E971D78ae43604073fB67887b440fE6CA19b) | — | ERC-20 test token for vault |
 
 ### FHE Operations Used
 
@@ -350,8 +353,15 @@ VITE_CONTRACT_ADDRESS=0x...              # CofhePoker (3-Card PvE)
 VITE_PVP_CONTRACT_ADDRESS=0x...          # CofhePokerPvP (3-Card PvP)
 VITE_HOLDEM_CONTRACT_ADDRESS=0x...       # CofheHoldem (Hold'em PvE)
 VITE_HOLDEM_PVP_CONTRACT_ADDRESS=0x...   # CofheHoldemPvP (Hold'em PvP)
+VITE_VAULT_ADDRESS=0x...                 # Vault (ETH/USDT deposits)
+VITE_USDT_ADDRESS=0x...                  # MockUSDT token
 VITE_CHAIN_ID=11155111
 VITE_SEPOLIA_RPC_URL=https://...
+
+# Supabase — backend for leaderboard, profiles, PvP chat, hand history
+# Run supabase/schema.sql in the Supabase SQL Editor to create tables
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJ...
 ```
 
 ---
@@ -365,12 +375,18 @@ contracts/
   CofheHoldem.sol             Texas Hold'em vs Bot — 4 rounds, per-street eval (~500 FHE ops)
   CofheHoldemPvP.sol          Hold'em PvP — all-in, timeouts, EIP-712 (~700 FHE ops)
 
+supabase/
+  schema.sql                  Postgres schema — players, hand_results, pvp_chat + RLS + Realtime
+
 scripts/
   deploy.cts                  Deploy CofhePoker
   deployPvP.cts               Deploy CofhePokerPvP
   deployHoldem.cts            Deploy CofheHoldem
   deployHoldemPvP.cts         Deploy CofheHoldemPvP
-  test-flow.mjs               Automated PvP integration test (2 wallets)
+  test-integration.cjs        Supabase + RPC integration tests (35 checks)
+  test-flows.cjs              Runtime flow + security analysis (44 checks)
+  test-game3.mjs              On-chain game flow: 3-Card + HoldemPvP (20 checks, 2 wallets)
+  test-vault-full.mjs         Vault real-money flow: deposit → lock → settle → withdraw
 
 src/
   components/
@@ -378,22 +394,31 @@ src/
     PlayTab.tsx               3-Card Poker game UI
     HoldemTab.tsx             Hold'em game UI (5 community cards, 4 rounds)
     HoldemPvPTab.tsx          Hold'em PvP (lobby, narrator, activity log)
-    PvPTab.tsx                3-Card PvP (lobby, friends, invites)
     LandingPage.tsx           Landing page with scroll animations
+    LeaderboardTab.tsx        Live leaderboard from Supabase (mode/period filters)
+    ProfileTab.tsx            Player profile, XP, achievements, avatars
+    HistoryTab.tsx            Hand history (local + Supabase, CSV export)
+    SettingsTab.tsx           Settings, challenges, referral, PWA install
   hooks/
     useGameActions.ts         3-Card on-chain game flow
     useHoldemActions.ts       Hold'em on-chain game flow (4 rounds)
     useCofhe.ts               CoFHE SDK singleton, permits, decryption
     useGameGuards.ts          Pre-flight checks, turn timer, disconnect guard
+    useVault.ts               Vault deposit/withdraw, balance polling
+    useProfileSync.ts         Bidirectional Supabase sync (profile + balance + history)
   lib/
     poker.ts                  3-card hand evaluation + display utilities
     holdem.ts                 5-card and 7-card (best of 7) evaluation
+    db.ts                     All Supabase operations (15 functions)
   config/
     contract.ts               ABI + address (per contract)
+    supabase.ts               Supabase client + row types
   store/
-    useGameStore.ts           Zustand state management
-    useLobbyStore.ts          Lobby state management
-    usePvPGameStore.ts        PvP game state management
+    useGameStore.ts           Zustand state management (balance server-authoritative)
+    useVaultStore.ts          Vault balances, oracle price, real-money mode
+    useProfileStore.ts        XP, achievements, avatar (synced to Supabase)
+    useChallengesStore.ts     Daily/weekly challenges (synced to Supabase)
+    useNotificationsStore.ts  In-app notifications (persisted)
 ```
 
 ---
@@ -425,7 +450,7 @@ src/
 
 ## Roadmap
 
-### Wave 1 ✅ (Current)
+### Wave 1 ✅
 
 **Smart Contracts (4 deployed on Sepolia):**
 - [x] `CofhePoker.sol` — 3-Card Poker vs Bot: FHE card dealing, 3-card evaluation, async bot decision + showdown
@@ -464,36 +489,38 @@ src/
 - [x] Error boundary for crash recovery
 - [x] E2E integration test (`scripts/test-flow.mjs`) — full PvP hand via viem
 
-### Wave 2 — Multi-Table & Spectators (Planned)
-- [ ] `CofheHoldemMulti.sol` — 3-9 player tables with `FHE.allow` per-seat privacy
-- [ ] Spectator mode — watch games without card access (pot + community only)
-- [ ] The Graph subgraph for `TableCreated`, `HandComplete`, `PlayerJoined` indexing
-- [ ] Hand history replay from on-chain events
-- [ ] Player profiles with encrypted lifetime stats via `FHE.add` aggregation
+### Wave 2 ✅ (Current)
 
-### Wave 3 — Tournaments & Staking (Planned)
-- [ ] `CofheTournament.sol` — multi-table tournament with blind schedule
-- [ ] `FHE.mul(blindLevel, multiplier)` — encrypted blind escalation
-- [ ] `FHE.gte(stack, bigBlind)` — encrypted bust-out detection
-- [ ] Sit-and-go format: auto-start when seats fill
-- [ ] Chainlink Automation for blind advancement + table merging
+**New contracts:** Vault (`0x78F7…1a19`), MockUSDT (`0x5da0…A19b`)
 
-### Wave 4 — Token Integration & Analytics (Planned)
-- [ ] Real token buy-ins (ERC-20) with encrypted chip conversion
-- [ ] Chainlink VRF v2.5 — verifiable randomness alongside FHE encryption
-- [ ] Rake system — `FHE.mul(pot, rakeBps)` encrypted platform fee
-- [ ] Analytics dashboard from on-chain events
-- [ ] Gasless betting via ERC-2771 meta-transactions
+- [x] Texas Hold'em PvP — full 4-round multiplayer, hole cards as `euint64`, 3-step FHE showdown
+- [x] PvP Lobby — `createTable(buyIn, isPrivate)`, invite links `#/room/holdem/{id}:{code}`, 60s timeout
+- [x] Vault — `depositETH()` / `depositUSDT()` / `withdraw()`, Chainlink oracle, `lockForGame()` → `settleGame()`
+- [x] On-chain friends — `sendFriendRequest()` → `acceptFriendRequest()`, game invites
+- [x] FHE permit pipeline — singleton CoFHE client, Zustand store, 10-retry decrypt with backoff
+- [x] React stability — batched Zustand updates, individual selectors, wagmi EIP-6963 fix
+- [x] Visual overhaul — card SVGs, confetti, Web Audio synthesis, AnimatePresence transitions
+- [x] E2E test suite — `scripts/test-contracts.ts`, 30 passing tests across 6 contracts on Sepolia
 
-### Wave 5 — Production (Planned)
-- [ ] Multi-chain deployment (pending CoFHE L2 support)
-- [ ] Mobile-optimized responsive UI
-- [ ] Formal security audit
-- [ ] `@cofhe-poker/sdk` — npm package for third-party integrations
+### Wave 3 — Encrypted Gameplay (Planned)
+
+1. **Encrypted Bet Sizing** — bet as `euint64`, `FHE.gte(betA, betB)` validates raises, `decryptForView()` reveals both simultaneously after both act
+2. **Hidden Balance Mode** — chip count as `euint64`, opponent sees tier only: `FHE.gte(balance, threshold)` → `ebool`
+3. **Encrypted Hand Strength** — `evaluateHand()` returns `euint64 score`, player decrypts own via `.withPermit()`, opponent's stays encrypted
+4. **Provable Fair Shuffle** — `keccak256(deckSeed)` commitment before deal, cards as `euint64`, seed revealed after hand
+5. **FHE Spectator Mode** — hole cards stay `euint64`, spectator permit scoped to community + pot, `FHE.allow()` after showdown
+
+### Wave 4 — Encrypted Economy (Planned)
+
+1. **Encrypted Tournament** — standings as `euint64[]`, each player decrypts only own rank via `.withPermit()`
+2. **Private Leaderboard** — `FHE.gte(myScore, top10Threshold)` → `ebool` — prove top 10 without revealing chips
+3. **Bankroll Proof** — `FHE.gte(balance, tableMinBuy)` → `ebool eligible` — enter high-stakes without revealing balance
+4. **Scoped Audit Permits** — time-limited EIP-712 permit for `settleGame` ciphertexts, auditor sees rake only
+5. **Encrypted Side Pots** — `FHE.add(mainPot, sidePot)` on `euint64`, payout via `decryptForTx()` with oracle signature
 
 ---
 
-## Hackathon Submission — Wave 1
+## Hackathon Submission — Wave 2
 
 ### TL;DR for Judges
 
@@ -503,13 +530,14 @@ Cofhe Poker is the most computationally intensive FHE application in this builda
 
 | Metric | Value |
 |--------|-------|
-| Smart contracts | 4 (all deployed) |
+| Smart contracts | 6 (4 game + Vault + MockUSDT) |
 | FHE operations used | 20+ distinct (`add`, `sub`, `mul`, `div`, `rem`, `eq`, `ne`, `gt`, `gte`, `min`, `max`, `select`, `and`, `or`, `not`, `decrypt`, `randomEuint64`, `allow`, `allowThis`, `allowPublic`, `asEuint64`) |
 | FHE ops per hand | 80 (3-Card) to 700 (Hold'em PvP) |
 | Gas per showdown | ~17M (3-Card) to ~35M (Hold'em PvP) |
 | Game modes | 4 (3-Card PvE/PvP, Hold'em PvE/PvP) |
 | Encrypted data types | `euint64`, `ebool` |
-| Game features | All-in, side pots, dealer rotation, timeouts, invite codes, friend system, EIP-712 batch |
+| Game features | All-in, side pots, dealer rotation, timeouts, invite codes, friend system, EIP-712 batch, Vault with Chainlink oracle |
+| E2E tests | 30 passing across all 6 contracts |
 
 **What FHE encrypts in Cofhe Poker:**
 - Every card value (0-51) — stored as `euint64`, never plaintext on-chain
@@ -519,12 +547,20 @@ Cofhe Poker is the most computationally intensive FHE application in this builda
 - Winner determination — `FHE.gt(score1, score2)` boolean, only result decrypted
 - Tie detection — `FHE.eq(score1, score2)` for pot splitting
 
+**Wave 2 additions:**
+- Texas Hold'em PvP with full 4-round FHE gameplay (preflop → flop → turn → river → showdown)
+- PvP lobby with private rooms and invite codes
+- Vault contract — ETH/USDT deposits with Chainlink oracle, lock/settle for real-money games
+- On-chain friend system + game invites
+- E2E on-chain test suite (`scripts/test-contracts.ts`) — 30 tests with real Sepolia transactions
+- React stability fixes — batched Zustand store updates, individual selectors, wagmi EIP-6963 cascade prevention
+
 **Why this matters:** No other project in this wave runs a full game engine on FHE. This isn't "encrypt a number and decrypt it later" — the contract evaluates 7-card poker hands, detects pairs/flushes/straights, sorts ranks, and scores hands, all on ciphertext. The computation graph for a single `_evalHand7()` call spans ~350 FHE operations with nested conditional branches.
 
 ---
 
 <div align="center">
 
-Built with Fhenix CoFHE for the Fhenix Buildathon 2026
+Built with Fhenix CoFHE for the Fhenix Buildathon 2026 — Wave 2
 
 </div>

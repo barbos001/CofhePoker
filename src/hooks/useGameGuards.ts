@@ -220,6 +220,7 @@ export const useGameGuards = () => {
         txHash: '',
         playerCards: store.playerCards,
         botCards: [],
+        gameMode: store.gameMode,
       });
     }
   }, [store]);
