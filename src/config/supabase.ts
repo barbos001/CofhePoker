@@ -27,7 +27,29 @@ export interface PlayerRow {
   ref_bonus_claimed:   boolean;
   low_balance_claims:  number;
   challenge_progress:  string;     // JSON { [challengeId]: number }
+  elo:                 number;     // PvP Elo rating, starts at 1200
   updated_at:          string;
+}
+
+export interface ActiveTableRow {
+  table_id:   number;
+  player1:    string;
+  player2:    string;
+  state:      number;
+  pot:        number;
+  buy_in:     number;
+  is_private: boolean;
+  round_name: string;
+  updated_at: string;
+}
+
+export interface GameInviteRow {
+  id:         string;
+  from_addr:  string;
+  to_addr:    string;
+  table_id:   number;
+  status:     'pending' | 'accepted' | 'declined';
+  created_at: string;
 }
 
 export interface HandResultRow {

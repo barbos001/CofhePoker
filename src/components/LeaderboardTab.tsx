@@ -24,6 +24,7 @@ interface LeaderEntry {
   net:      number;
   winRate:  number;
   hands:    number;
+  elo:      number;
   isMe:     boolean;
 }
 
@@ -39,6 +40,7 @@ function dbToUI(row: DBLeaderEntry, myAddress: string | undefined, rank: number)
     net:     row.total_delta,
     winRate: row.win_rate,
     hands:   row.total_hands,
+    elo:     row.elo ?? 1200,
     isMe:    !!myAddress && row.player_address.toLowerCase() === myAddress.toLowerCase(),
   };
 }
@@ -62,6 +64,7 @@ function buildLocalEntries(
     net:     balance - 1000, // delta from starting balance
     winRate: total > 0 ? Math.round((wins / total) * 100) : 0,
     hands:   total,
+    elo:     1200,
     isMe:    true,
   }];
 }
@@ -121,7 +124,14 @@ const LeaderRow = ({ entry, index }: { entry: LeaderEntry; index: number }) => (
       <span style={{ ...cp(400, 9, '0.1em'), color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase' }}>win rate</span>
     </div>
 
-    <div className="flex flex-col items-end shrink-0 ml-4">
+    <div className="hidden md:flex flex-col items-end shrink-0 ml-3">
+      <span style={{ ...cp(600, 13), color: entry.elo >= 1400 ? '#FFE03D' : entry.elo >= 1200 ? '#00BFFF' : 'rgba(255,255,255,0.4)' }}>
+        {entry.elo}
+      </span>
+      <span style={{ ...cp(400, 9, '0.1em'), color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase' }}>elo</span>
+    </div>
+
+    <div className="flex flex-col items-end shrink-0 ml-3">
       <span style={{ ...cp(700, 15, '0.02em'), color: entry.rank === 1 ? '#FFE03D' : entry.net >= 0 ? '#00E86C' : '#FF3B3B' }}>
         {entry.net >= 0 ? '+' : ''}{entry.net.toLocaleString()}
       </span>
@@ -287,7 +297,7 @@ export const LeaderboardTab = () => {
           <span style={{ ...cp(400, 12), color: 'rgba(255,255,255,0.6)' }}>Your rank:</span>
           <span style={{ ...cp(700, 14), color: '#00BFFF' }}>#{myEntry.rank}</span>
           <span style={{ ...cp(400, 11), color: 'rgba(255,255,255,0.35)' }}>
-            · {myEntry.net >= 0 ? '+' : ''}{myEntry.net.toLocaleString()} net · {myEntry.winRate}% win rate
+            · {myEntry.net >= 0 ? '+' : ''}{myEntry.net.toLocaleString()} net · {myEntry.winRate}% win rate · Elo {myEntry.elo}
           </span>
         </motion.div>
       )}
@@ -336,7 +346,8 @@ export const LeaderboardTab = () => {
           <span className="w-8" />
           <span className="flex-1" style={{ ...cp(500, 10, '0.15em'), color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase' }}>Player</span>
           <span className="hidden sm:block" style={{ ...cp(500, 10, '0.15em'), color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase' }}>Win %</span>
-          <span style={{ ...cp(500, 10, '0.15em'), color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', marginLeft: 16 }}>Net Chips</span>
+          <span className="hidden md:block" style={{ ...cp(500, 10, '0.15em'), color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', marginLeft: 12 }}>Elo</span>
+          <span style={{ ...cp(500, 10, '0.15em'), color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', marginLeft: 12 }}>Net Chips</span>
         </div>
 
         <div className="p-2">

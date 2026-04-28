@@ -99,8 +99,86 @@ drop policy if exists "insert pvp_chat"      on pvp_chat;
 create policy "public read pvp_chat" on pvp_chat for select using (true);
 create policy "insert pvp_chat"      on pvp_chat for insert with check (true);
 
+-- ─── Elo rating ───────────────────────────────────────────────────────────────
+alter table players add column if not exists elo integer not null default 1200;
+
+-- ─── pvp_active_tables ────────────────────────────────────────────────────────
+-- Tracks live PvP games for the spectator view. Rows inserted on table create,
+-- updated on join/state changes, deleted when the hand completes.
+create table if not exists pvp_active_tables (
+  table_id    integer primary key,
+  player1     text    not null,
+  player2     text    not null default '',
+  state       integer not null default 0,
+  pot         integer not null default 0,
+  buy_in      integer not null default 25,
+  is_private  boolean not null default false,
+  round_name  text    not null default '',
+  updated_at  timestamptz not null default now()
+);
+
+alter table pvp_active_tables enable row level security;
+
+drop policy if exists "public read pvp_active_tables" on pvp_active_tables;
+drop policy if exists "upsert pvp_active_tables"      on pvp_active_tables;
+drop policy if exists "update pvp_active_tables"      on pvp_active_tables;
+drop policy if exists "delete pvp_active_tables"      on pvp_active_tables;
+
+create policy "public read pvp_active_tables" on pvp_active_tables for select using (true);
+create policy "upsert pvp_active_tables"      on pvp_active_tables for insert with check (true);
+create policy "update pvp_active_tables"      on pvp_active_tables for update using (true);
+create policy "delete pvp_active_tables"      on pvp_active_tables for delete using (true);
+
+-- ─── game_invites ─────────────────────────────────────────────────────────────
+-- Tracks friend game invitations so recipients see them cross-device.
+create table if not exists game_invites (
+  id          uuid    primary key default gen_random_uuid(),
+  from_addr   text    not null,
+  to_addr     text    not null,
+  table_id    integer not null,
+  status      text    not null default 'pending'
+              check (status in ('pending', 'accepted', 'declined')),
+  created_at  timestamptz not null default now()
+);
+
+create index if not exists game_invites_to_idx   on game_invites(to_addr,   status);
+create index if not exists game_invites_from_idx on game_invites(from_addr, status);
+
+alter table game_invites enable row level security;
+
+drop policy if exists "public read game_invites" on game_invites;
+drop policy if exists "insert game_invites"      on game_invites;
+drop policy if exists "update game_invites"      on game_invites;
+
+create policy "public read game_invites" on game_invites for select using (true);
+create policy "insert game_invites"      on game_invites for insert with check (true);
+create policy "update game_invites"      on game_invites for update using (true);
+
+-- Auto-expire stale active tables (no update in 30 min = game abandoned)
+create or replace function delete_stale_active_tables() returns trigger as $$
+begin
+  delete from pvp_active_tables where updated_at < now() - interval '30 minutes';
+  return new;
+end;
+$$ language plpgsql;
+
+drop trigger if exists trg_delete_stale_tables on pvp_active_tables;
+create trigger trg_delete_stale_tables
+  after insert or update on pvp_active_tables
+  execute procedure delete_stale_active_tables();
+
 -- ─── Realtime publication ─────────────────────────────────────────────────────
 do $$ begin
   alter publication supabase_realtime add table pvp_chat;
 exception when others then null; -- already a member, skip
+end $$;
+
+do $$ begin
+  alter publication supabase_realtime add table pvp_active_tables;
+exception when others then null;
+end $$;
+
+do $$ begin
+  alter publication supabase_realtime add table game_invites;
+exception when others then null;
 end $$;
