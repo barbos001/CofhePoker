@@ -2,6 +2,9 @@
 pragma solidity ^0.8.25;
 
 import "@fhenixprotocol/cofhe-contracts/FHE.sol";
+import {ITaskManager} from "@fhenixprotocol/cofhe-contracts/ICofhe.sol";
+
+address constant TASK_MANAGER_PVP = 0xeA30c4B8b44078Bbf8a6ef5b9f1eC1626C7848D9;
 
 /// @title CofheHoldemPvP — Full Texas Hold'em PvP with FHE
 /// @notice Improvements over v1:
@@ -503,8 +506,8 @@ contract CofheHoldemPvP {
         FHE.allowThis(isTie);
         h.showdownHandle = ebool.unwrap(p1Wins);
         h.tieHandle      = ebool.unwrap(isTie);
-        FHE.decrypt(p1Wins);
-        FHE.decrypt(isTie);
+        ITaskManager(TASK_MANAGER_PVP).createDecryptTask(uint256(ebool.unwrap(p1Wins)), address(this));
+        ITaskManager(TASK_MANAGER_PVP).createDecryptTask(uint256(ebool.unwrap(isTie)), address(this));
         h.showdownP1Done = true;
     }
 

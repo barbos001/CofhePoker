@@ -2,6 +2,10 @@
 pragma solidity ^0.8.25;
 
 import "@fhenixprotocol/cofhe-contracts/FHE.sol";
+import {ITaskManager} from "@fhenixprotocol/cofhe-contracts/ICofhe.sol";
+
+// CoFHE TaskManager address on Sepolia (unchanged across migration)
+address constant TASK_MANAGER = 0xeA30c4B8b44078Bbf8a6ef5b9f1eC1626C7848D9;
 
 /// @title CofheHoldem
 /// @notice Texas Hold'em FHE poker: 2 hole + 5 community, 4 betting rounds,
@@ -174,7 +178,7 @@ contract CofheHoldem {
         ebool botPlays = FHE.gte(botPfScore, FHE.asEuint64(uint64(BOT_PF_THRESHOLD)));
         FHE.allowThis(botPlays);
         h.botPfHandle = ebool.unwrap(botPlays);
-        FHE.decrypt(botPlays);
+        ITaskManager(TASK_MANAGER).createDecryptTask(uint256(ebool.unwrap(botPlays)), address(this));
 
         emit PlayerAction(tableId, action == 0 ? "check_pf" : "bet_pf");
     }
@@ -193,7 +197,7 @@ contract CofheHoldem {
         ebool botPlays = FHE.gte(h.botScore, FHE.asEuint64(uint64(BOT_FLOP_THRESHOLD)));
         FHE.allowThis(botPlays);
         h.botFlopHandle = ebool.unwrap(botPlays);
-        FHE.decrypt(botPlays);
+        ITaskManager(TASK_MANAGER).createDecryptTask(uint256(ebool.unwrap(botPlays)), address(this));
 
         emit PlayerAction(tableId, action == 0 ? "check_flop" : "bet_flop");
     }
@@ -211,7 +215,7 @@ contract CofheHoldem {
         ebool botPlays = FHE.gte(pc, FHE.asEuint64(uint64(BOT_TURN_THRESHOLD)));
         FHE.allowThis(botPlays);
         h.botTurnHandle = ebool.unwrap(botPlays);
-        FHE.decrypt(botPlays);
+        ITaskManager(TASK_MANAGER).createDecryptTask(uint256(ebool.unwrap(botPlays)), address(this));
 
         emit PlayerAction(tableId, action == 0 ? "check_turn" : "bet_turn");
     }
@@ -229,7 +233,7 @@ contract CofheHoldem {
         ebool botPlays = FHE.gte(pc, FHE.asEuint64(uint64(BOT_RIVER_THRESHOLD)));
         FHE.allowThis(botPlays);
         h.botRiverHandle = ebool.unwrap(botPlays);
-        FHE.decrypt(botPlays);
+        ITaskManager(TASK_MANAGER).createDecryptTask(uint256(ebool.unwrap(botPlays)), address(this));
 
         emit PlayerAction(tableId, action == 0 ? "check_river" : "bet_river");
     }
@@ -494,7 +498,7 @@ contract CofheHoldem {
         ebool playerWins = FHE.gt(h.playerScore, h.botScore);
         FHE.allowThis(playerWins);
         h.showdownHandle = ebool.unwrap(playerWins);
-        FHE.decrypt(playerWins);
+        ITaskManager(TASK_MANAGER).createDecryptTask(uint256(ebool.unwrap(playerWins)), address(this));
     }
 
     function isShowdownReady(uint256 tableId) external view returns (bool) {

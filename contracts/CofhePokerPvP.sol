@@ -2,6 +2,9 @@
 pragma solidity ^0.8.25;
 
 import "@fhenixprotocol/cofhe-contracts/FHE.sol";
+import {ITaskManager} from "@fhenixprotocol/cofhe-contracts/ICofhe.sol";
+
+address constant TASK_MANAGER_PVPC = 0xeA30c4B8b44078Bbf8a6ef5b9f1eC1626C7848D9;
 
 /// @title CofhePokerPvP
 /// @notice Multiplayer 3-card poker with FHE-encrypted cards, lobby, friends, and invites.
@@ -432,7 +435,7 @@ contract CofhePokerPvP {
         external inPvPState(tableId, PvPState.AWAITING_SHOWDOWN)
     {
         PvPHand storage h = pvpHands[tableId];
-        FHE.publishDecryptResult(h.showdownHandle, result, signature);
+        ITaskManager(TASK_MANAGER_PVPC).publishDecryptResult(uint256(h.showdownHandle), result, signature);
 
         PvPTable storage t = pvpTables[tableId];
         bool p1Wins = (result == 1);
