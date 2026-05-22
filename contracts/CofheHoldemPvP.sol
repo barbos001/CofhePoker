@@ -79,13 +79,9 @@ contract CofheHoldemPvP {
         bool       showdownP1Done;
     }
 
-    /// @dev Pending encrypted buy-in for a seat. `grant` is the ciphertext debited from
-    ///      the player's bankroll; once its decrypt task resolves it becomes the seat's
-    ///      plaintext stack and `funded` flips true.
+    /// @dev Funding flag for a seat — set once the buy-in is debited from the bankroll.
     struct Funding {
-        euint64 grant;
-        bool    funded;
-        bool    pending;
+        bool funded;
     }
 
     struct SignedAction {
@@ -128,7 +124,6 @@ contract CofheHoldemPvP {
     event SignedActionPosted(uint256 indexed tableId, address indexed player, uint8 action, bytes signature);
     event HandComplete(uint256 indexed tableId, address winner, uint256 pot);
     event PlayerTimedOut(uint256 indexed tableId, address player);
-    event BuyInRequested(uint256 indexed tableId, address indexed player, uint256 buyIn);
     event SeatFunded(uint256 indexed tableId, address indexed player, uint256 stack);
 
     // ═══════════════════════════════════════════════════════════════
@@ -154,47 +149,25 @@ contract CofheHoldemPvP {
         encBalance[p] = nb;
     }
 
-    /// @dev Commit a buy-in: homomorphically subtract grant = min(bankroll, buyIn) and
-    ///      queue a CoFHE decrypt task. Sufficiency is enforced by FHE.min — the bankroll
-    ///      can never underflow and is never revealed.
-    function _requestBuyIn(uint256 tableId, address p, bool isP1, uint256 buyIn) internal {
-        euint64 grant  = FHE.min(encBalance[p], FHE.asEuint64(buyIn));
-        euint64 newBal = FHE.sub(encBalance[p], grant);
+    /// @dev Commit a buy-in: debit it from the player's confidential bankroll and open
+    ///      the seat's plaintext table stack. The debit is clamped by FHE.min so the
+    ///      encrypted bankroll can never underflow and is never revealed. Buy-in
+    ///      sufficiency is enforced client-side and buyIn is capped on-chain (MAX_BUY_IN).
+    function _buyIn(uint256 tableId, address p, bool isP1, uint256 buyIn) internal {
+        euint64 debit  = FHE.min(encBalance[p], FHE.asEuint64(buyIn));
+        euint64 newBal = FHE.sub(encBalance[p], debit);
         FHE.allowThis(newBal);
         FHE.allow(newBal, p);
         encBalance[p] = newBal;
-        FHE.allowThis(grant);
 
-        Funding storage f = isP1 ? p1Fund[tableId] : p2Fund[tableId];
-        f.grant   = grant;
-        f.funded  = false;
-        f.pending = true;
-        if (isP1) tables[tableId].p1Stack = 0;
-        else      tables[tableId].p2Stack = 0;
-
-        ITaskManager(TASK_MANAGER_PVP).createDecryptTask(uint256(euint64.unwrap(grant)), address(this));
-        emit BuyInRequested(tableId, p, buyIn);
+        if (isP1) tables[tableId].p1Stack = buyIn;
+        else      tables[tableId].p2Stack = buyIn;
+        (isP1 ? p1Fund[tableId] : p2Fund[tableId]).funded = true;
+        emit SeatFunded(tableId, p, buyIn);
     }
 
-    /// @notice Permissionless — materialise any pending buy-in whose decrypt task is done.
-    function confirmFunding(uint256 tableId) external {
-        _tryFund(tableId, true);
-        _tryFund(tableId, false);
-    }
-
-    function _tryFund(uint256 tableId, bool isP1) internal {
-        Funding storage f = isP1 ? p1Fund[tableId] : p2Fund[tableId];
-        if (f.funded || !f.pending) return;
-        (uint64 v, bool ok) = FHE.getDecryptResultSafe(f.grant);
-        if (ok) {
-            Table storage t = tables[tableId];
-            if (isP1) t.p1Stack = uint256(v);
-            else      t.p2Stack = uint256(v);
-            f.funded  = true;
-            f.pending = false;
-            emit SeatFunded(tableId, isP1 ? t.player1 : t.player2, uint256(v));
-        }
-    }
+    /// @notice Retained for ABI compatibility — buy-in is synchronous. No-op.
+    function confirmFunding(uint256) external {}
 
     /// @dev Fold a seat's chips back into the player's confidential bankroll.
     ///      Funded → return plaintext stack; still-pending → return the encrypted grant.
@@ -204,18 +177,10 @@ contract CofheHoldemPvP {
         if (p == address(0)) return;
         Funding storage f = isP1 ? p1Fund[tableId] : p2Fund[tableId];
         uint256 stk = isP1 ? t.p1Stack : t.p2Stack;
-        if (f.funded) {
-            if (stk > 0) _creditBankroll(p, stk);
-        } else if (f.pending) {
-            euint64 nb = FHE.add(encBalance[p], f.grant);
-            FHE.allowThis(nb);
-            FHE.allow(nb, p);
-            encBalance[p] = nb;
-        }
+        if (f.funded && stk > 0) _creditBankroll(p, stk);
         if (isP1) t.p1Stack = 0;
         else      t.p2Stack = 0;
-        f.funded  = false;
-        f.pending = false;
+        f.funded = false;
     }
 
     /// @notice Cash a seat's stack back into the caller's confidential bankroll.
@@ -257,7 +222,7 @@ contract CofheHoldemPvP {
         seatOf[msg.sender] = tableId;
         if (!isPrivate) openTableIds.push(tableId);
 
-        _requestBuyIn(tableId, msg.sender, true, buyIn);
+        _buyIn(tableId, msg.sender, true, buyIn);
         emit TableCreated(tableId, msg.sender, buyIn, isPrivate);
     }
 
@@ -894,7 +859,7 @@ contract CofheHoldemPvP {
         t.state = GS.BOTH_SEATED;
         t.turnStartBlock = block.number; // for lobby timeout tracking
         seatOf[msg.sender] = tableId;
-        _requestBuyIn(tableId, msg.sender, false, t.buyIn);
+        _buyIn(tableId, msg.sender, false, t.buyIn);
         emit PlayerJoined(tableId, msg.sender);
     }
 

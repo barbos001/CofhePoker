@@ -76,13 +76,10 @@ contract CofhePokerPvP {
 
     /// @dev A player's seat at a table. `stack` is the plaintext chips in play
     ///      (unavoidably public — a poker round cannot progress on ciphertext).
-    ///      `grant` is the encrypted buy-in awaiting a CoFHE decrypt task; once
-    ///      decrypted it becomes `stack` and `funded` flips true.
+    ///      `funded` is set once the buy-in has been debited from the bankroll.
     struct Seat {
         uint256 stack;
-        euint64 grant;
-        bool    funded;   // grant decrypted into stack — seat is playable
-        bool    pending;  // grant requested, decrypt task in flight
+        bool    funded;
     }
 
     //  Storage
@@ -121,7 +118,6 @@ contract CofhePokerPvP {
     event PvPHandStarted(uint256 indexed tableId, uint256 handId);
     event PvPAction(uint256 indexed tableId, address indexed player, string action);
     event PvPHandComplete(uint256 indexed tableId, address winner, uint256 pot);
-    event BuyInRequested(uint256 indexed tableId, address indexed player, uint256 buyIn);
     event SeatFunded(uint256 indexed tableId, address indexed player, uint256 stack);
 
     event FriendRequestSent(address indexed from, address indexed to);
@@ -158,69 +154,41 @@ contract CofhePokerPvP {
         }
     }
 
-    /// @dev Commit a buy-in: subtract an encrypted grant = min(bankroll, buyIn) from the
-    ///      player's confidential bankroll and queue a CoFHE decrypt task so the grant can
-    ///      be materialised into the table's plaintext stack. Sufficiency is enforced
-    ///      homomorphically (FHE.min) — the bankroll can never underflow and is never revealed.
-    function _requestBuyIn(uint256 tableId, address p, bool isP1, uint256 buyIn) internal {
-        euint64 grant  = FHE.min(encBalance[p], FHE.asEuint64(buyIn));
-        euint64 newBal = FHE.sub(encBalance[p], grant);
+    /// @dev Commit a buy-in: debit it from the player's confidential bankroll and
+    ///      open the seat's plaintext table stack. The bankroll debit is clamped by
+    ///      FHE.min so the encrypted bankroll can never underflow and is never revealed.
+    ///      Buy-in sufficiency (buyIn <= bankroll) is enforced client-side — the player
+    ///      can decrypt their own bankroll — and buyIn is capped on-chain.
+    function _buyIn(uint256 tableId, address p, bool isP1, uint256 buyIn) internal {
+        euint64 debit  = FHE.min(encBalance[p], FHE.asEuint64(buyIn));
+        euint64 newBal = FHE.sub(encBalance[p], debit);
         FHE.allowThis(newBal);
         FHE.allow(newBal, p);
         encBalance[p] = newBal;
-        FHE.allowThis(grant);
 
         Seat storage s = isP1 ? p1Seat[tableId] : p2Seat[tableId];
-        s.grant   = grant;
-        s.funded  = false;
-        s.pending = true;
-        s.stack   = 0;
-
-        ITaskManager(TASK_MANAGER_PVPC).createDecryptTask(uint256(euint64.unwrap(grant)), address(this));
-        emit BuyInRequested(tableId, p, buyIn);
+        s.stack  = buyIn;
+        s.funded = true;
+        emit SeatFunded(tableId, p, buyIn);
     }
 
-    /// @notice Permissionless — materialise any pending buy-in whose decrypt task has finished.
-    ///         Anyone may call; both players can be funded in a single tx.
-    function confirmFunding(uint256 tableId) external {
-        _tryFund(tableId, true);
-        _tryFund(tableId, false);
-    }
-
-    function _tryFund(uint256 tableId, bool isP1) internal {
-        Seat storage s = isP1 ? p1Seat[tableId] : p2Seat[tableId];
-        if (s.funded || !s.pending) return;
-        (uint64 v, bool ok) = FHE.getDecryptResultSafe(s.grant);
-        if (ok) {
-            s.stack   = uint256(v);
-            s.funded  = true;
-            s.pending = false;
-            PvPTable storage t = pvpTables[tableId];
-            emit SeatFunded(tableId, isP1 ? t.player1 : t.player2, uint256(v));
-        }
-    }
+    /// @notice Retained for ABI compatibility — buy-in is synchronous, so a seat is
+    ///         funded the moment its table is created/joined. No-op.
+    function confirmFunding(uint256) external {}
 
     /// @dev Fold a seat's chips back into the player's confidential bankroll on leave.
     ///      Handles both the funded case (return plaintext stack) and the still-pending
     ///      case (return the encrypted grant) so chips are never lost.
     function _cashOut(uint256 tableId, address p, bool isP1) internal {
         Seat storage s = isP1 ? p1Seat[tableId] : p2Seat[tableId];
-        if (s.funded) {
-            if (s.stack > 0) {
-                euint64 nb = FHE.add(encBalance[p], FHE.asEuint64(s.stack));
-                FHE.allowThis(nb);
-                FHE.allow(nb, p);
-                encBalance[p] = nb;
-            }
-        } else if (s.pending) {
-            euint64 nb = FHE.add(encBalance[p], s.grant);
+        if (s.funded && s.stack > 0) {
+            euint64 nb = FHE.add(encBalance[p], FHE.asEuint64(s.stack));
             FHE.allowThis(nb);
             FHE.allow(nb, p);
             encBalance[p] = nb;
         }
-        s.stack   = 0;
-        s.funded  = false;
-        s.pending = false;
+        s.stack  = 0;
+        s.funded = false;
     }
 
     //  Lobby
@@ -228,7 +196,7 @@ contract CofhePokerPvP {
     /// @notice Create a PvP table and commit the creator's buy-in from their confidential bankroll.
     function createPvPTable(uint256 buyIn, bool isPrivate) external returns (uint256 tableId) {
         require(seatOf[msg.sender] == 0, "Already seated at a table");
-        require(buyIn >= ANTE, "Buy-in too low");
+        require(buyIn >= ANTE && buyIn <= INITIAL_BALANCE, "Bad buy-in");
 
         _initBalance(msg.sender);
 
@@ -256,7 +224,7 @@ contract CofhePokerPvP {
             openTableIds.push(tableId);
         }
 
-        _requestBuyIn(tableId, msg.sender, true, buyIn);
+        _buyIn(tableId, msg.sender, true, buyIn);
 
         emit PvPTableCreated(tableId, msg.sender, buyIn, isPrivate);
     }
@@ -288,7 +256,7 @@ contract CofhePokerPvP {
         // Remove from lobby listing
         _removeFromOpenTables(tableId);
 
-        _requestBuyIn(tableId, msg.sender, false, t.buyIn);
+        _buyIn(tableId, msg.sender, false, t.buyIn);
 
         emit PlayerJoined(tableId, msg.sender);
     }

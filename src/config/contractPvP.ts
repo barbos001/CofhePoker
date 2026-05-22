@@ -1,5 +1,5 @@
 export const PVP_CONTRACT_ADDRESS = (
-  import.meta.env.VITE_PVP_CONTRACT_ADDRESS || '0xf9083474C2F15FDfb82115a8278c619ef6A46543'
+  import.meta.env.VITE_PVP_CONTRACT_ADDRESS || '0x7f29231Dfb9Ea271B3C39A494D3274f311952923'
 ) as `0x${string}`;
 
 export const PvPState = {
