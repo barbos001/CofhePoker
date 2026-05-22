@@ -43,7 +43,12 @@ export const usePvPGame = () => {
   const writeAndWait = useCallback(async (fnName: string, args: any): Promise<`0x${string}`> => {
     TX(`${fnName}() — sending…`);
     const t0 = performance.now();
-    const hash = await writeContractAsync(args);
+    // FHE-heavy txs under-report in eth_estimateGas — set explicit gas limits.
+    const PVP_GAS: Record<string, bigint> = {
+      startPvPHand: 3_000_000n, pvpAct: 10_000_000n, resolvePvPShowdown: 3_000_000n,
+      confirmFunding: 600_000n, leaveTable: 2_000_000n,
+    };
+    const hash = await writeContractAsync({ ...args, gas: PVP_GAS[fnName] });
     await publicClient!.waitForTransactionReceipt({ hash });
     TX(`${fnName}() — confirmed (${(performance.now() - t0).toFixed(0)}ms) ✓`);
     return hash;

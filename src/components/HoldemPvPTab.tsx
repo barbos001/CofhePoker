@@ -136,10 +136,18 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
   }, [readContract, setBalance, tableId, address]);
 
   const writeAndWait = useCallback(async (functionName: string, args?: unknown[]) => {
+    // FHE-heavy txs under-report in eth_estimateGas and OOG without an explicit
+    // gasLimit. Limits below are sized from observed on-chain gasUsed.
+    const GAS: Record<string, bigint> = {
+      createTable: 1_500_000n, joinTable: 1_500_000n, startHand: 3_500_000n,
+      act: 2_500_000n, fold: 3_500_000n, submitRound: 5_000_000n,
+      computeShowdown: 36_000_000n, resolveShowdown: 3_000_000n,
+      confirmFunding: 600_000n, cashOut: 2_000_000n, leaveTable: 2_500_000n,
+    };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const hash = await writeContractAsync({
       address: HOLDEM_PVP_CONTRACT_ADDRESS, abi: CIPHER_HOLDEM_PVP_ABI,
-      functionName, args,
+      functionName, args, gas: GAS[functionName],
     } as any);
     const TX_TIMEOUT = 60_000;
     await Promise.race([
