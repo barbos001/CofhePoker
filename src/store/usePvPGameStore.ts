@@ -93,7 +93,8 @@ export const usePvPGameStore = create<PvPGameStore>()(persist((set, get) => ({
 
   finishPvPHand: (p) => {
     const { pvpHistory, myCards, opponentCards: bc, opponentAddress } = get();
-    const id = Math.floor(Math.random() * 100000).toString();
+    // Real, unique id — the on-chain settlement tx hash (never fabricated).
+    const id = p.txHash;
     set({
       pvpState:   'result',
       handResult: p.result,
