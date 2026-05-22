@@ -15,6 +15,16 @@ address constant TASK_MANAGER_PVP = 0xeA30c4B8b44078Bbf8a6ef5b9f1eC1626C7848D9;
 ///   - On-chain timeout (block-based auto-forfeit)
 ///   - actions_this_round counter (Linera pattern)
 ///   - Side pot tracking for all-in scenarios
+///
+/// @dev Confidential bankroll (Wave 5):
+///   A player's chip bankroll is an FHE-encrypted euint64 (`encBalance`) — unreadable
+///   on-chain by anyone but the owner (via permit). Sitting at a table commits a public
+///   `buyIn`: the contract homomorphically subtracts `grant = min(bankroll, buyIn)` and
+///   runs a CoFHE decrypt task that materialises the grant into the table's plaintext
+///   in-hand stack (`p1Stack` / `p2Stack`). The betting engine runs entirely on those
+///   plaintext stacks — a poker round cannot progress on ciphertext — but every chip
+///   *not* committed to this table stays encrypted. On exit, the stack is folded back
+///   into the encrypted bankroll.
 contract CofheHoldemPvP {
 
     uint256 public constant SB              = 5;
@@ -53,6 +63,8 @@ contract CofheHoldemPvP {
         bool    p1AllIn;
         bool    p2AllIn;
         uint256 turnStartBlock;  // for timeout
+        uint256 p1Stack;         // plaintext in-hand chips (public — needed for round progression)
+        uint256 p2Stack;
     }
 
     struct Hand {
@@ -65,6 +77,15 @@ contract CofheHoldemPvP {
         bytes32    showdownHandle;
         bytes32    tieHandle;        // for tie detection
         bool       showdownP1Done;
+    }
+
+    /// @dev Pending encrypted buy-in for a seat. `grant` is the ciphertext debited from
+    ///      the player's bankroll; once its decrypt task resolves it becomes the seat's
+    ///      plaintext stack and `funded` flips true.
+    struct Funding {
+        euint64 grant;
+        bool    funded;
+        bool    pending;
     }
 
     struct SignedAction {
@@ -86,11 +107,14 @@ contract CofheHoldemPvP {
     mapping(uint256 => Table) public tables;
     mapping(uint256 => Hand)  internal hands;
     mapping(address => uint256) public seatOf;
-    mapping(address => uint256) public balances;
-    // Pending signed actions (for async posting)
-    mapping(uint256 => bytes) public pendingActionSig;  // tableId → sig from nextToAct
-    mapping(uint256 => uint8) public pendingActionType;  // tableId → action code
-    mapping(uint256 => bool)  public hasPendingAction;
+
+    // Confidential bankroll — encrypted, ACL-gated to the owner only.
+    mapping(address => euint64) internal encBalance;
+    mapping(address => bool)    internal balanceInit;
+
+    // Per-table encrypted buy-in funding.
+    mapping(uint256 => Funding) internal p1Fund;
+    mapping(uint256 => Funding) internal p2Fund;
 
     uint256[] public openTableIds;
     uint256 public nextTableId = 1;
@@ -104,6 +128,104 @@ contract CofheHoldemPvP {
     event SignedActionPosted(uint256 indexed tableId, address indexed player, uint8 action, bytes signature);
     event HandComplete(uint256 indexed tableId, address winner, uint256 pot);
     event PlayerTimedOut(uint256 indexed tableId, address player);
+    event BuyInRequested(uint256 indexed tableId, address indexed player, uint256 buyIn);
+    event SeatFunded(uint256 indexed tableId, address indexed player, uint256 stack);
+
+    // ═══════════════════════════════════════════════════════════════
+    //  CONFIDENTIAL BANKROLL
+    // ═══════════════════════════════════════════════════════════════
+
+    /// @notice First-touch bankroll init — INITIAL_BALANCE born encrypted on-chain,
+    ///         ACL-gated so only the owner can ever decrypt it.
+    function _initBalance(address p) internal {
+        if (!balanceInit[p]) {
+            balanceInit[p] = true;
+            euint64 b = FHE.asEuint64(INITIAL_BALANCE);
+            FHE.allowThis(b);
+            FHE.allow(b, p);
+            encBalance[p] = b;
+        }
+    }
+
+    function _creditBankroll(address p, uint256 amt) internal {
+        euint64 nb = FHE.add(encBalance[p], FHE.asEuint64(amt));
+        FHE.allowThis(nb);
+        FHE.allow(nb, p);
+        encBalance[p] = nb;
+    }
+
+    /// @dev Commit a buy-in: homomorphically subtract grant = min(bankroll, buyIn) and
+    ///      queue a CoFHE decrypt task. Sufficiency is enforced by FHE.min — the bankroll
+    ///      can never underflow and is never revealed.
+    function _requestBuyIn(uint256 tableId, address p, bool isP1, uint256 buyIn) internal {
+        euint64 grant  = FHE.min(encBalance[p], FHE.asEuint64(buyIn));
+        euint64 newBal = FHE.sub(encBalance[p], grant);
+        FHE.allowThis(newBal);
+        FHE.allow(newBal, p);
+        encBalance[p] = newBal;
+        FHE.allowThis(grant);
+
+        Funding storage f = isP1 ? p1Fund[tableId] : p2Fund[tableId];
+        f.grant   = grant;
+        f.funded  = false;
+        f.pending = true;
+        if (isP1) tables[tableId].p1Stack = 0;
+        else      tables[tableId].p2Stack = 0;
+
+        ITaskManager(TASK_MANAGER_PVP).createDecryptTask(uint256(euint64.unwrap(grant)), address(this));
+        emit BuyInRequested(tableId, p, buyIn);
+    }
+
+    /// @notice Permissionless — materialise any pending buy-in whose decrypt task is done.
+    function confirmFunding(uint256 tableId) external {
+        _tryFund(tableId, true);
+        _tryFund(tableId, false);
+    }
+
+    function _tryFund(uint256 tableId, bool isP1) internal {
+        Funding storage f = isP1 ? p1Fund[tableId] : p2Fund[tableId];
+        if (f.funded || !f.pending) return;
+        (uint64 v, bool ok) = FHE.getDecryptResultSafe(f.grant);
+        if (ok) {
+            Table storage t = tables[tableId];
+            if (isP1) t.p1Stack = uint256(v);
+            else      t.p2Stack = uint256(v);
+            f.funded  = true;
+            f.pending = false;
+            emit SeatFunded(tableId, isP1 ? t.player1 : t.player2, uint256(v));
+        }
+    }
+
+    /// @dev Fold a seat's chips back into the player's confidential bankroll.
+    ///      Funded → return plaintext stack; still-pending → return the encrypted grant.
+    function _cashOutSeat(uint256 tableId, bool isP1) internal {
+        Table storage t = tables[tableId];
+        address p = isP1 ? t.player1 : t.player2;
+        if (p == address(0)) return;
+        Funding storage f = isP1 ? p1Fund[tableId] : p2Fund[tableId];
+        uint256 stk = isP1 ? t.p1Stack : t.p2Stack;
+        if (f.funded) {
+            if (stk > 0) _creditBankroll(p, stk);
+        } else if (f.pending) {
+            euint64 nb = FHE.add(encBalance[p], f.grant);
+            FHE.allowThis(nb);
+            FHE.allow(nb, p);
+            encBalance[p] = nb;
+        }
+        if (isP1) t.p1Stack = 0;
+        else      t.p2Stack = 0;
+        f.funded  = false;
+        f.pending = false;
+    }
+
+    /// @notice Cash a seat's stack back into the caller's confidential bankroll.
+    ///         Allowed only when no hand is in progress.
+    function cashOut(uint256 tableId) external {
+        Table storage t = tables[tableId];
+        require(msg.sender == t.player1 || msg.sender == t.player2, "Not seated");
+        require(t.state < GS.PREFLOP || t.state == GS.COMPLETE, "Hand in progress");
+        _cashOutSeat(tableId, msg.sender == t.player1);
+    }
 
     // ═══════════════════════════════════════════════════════════════
     //  LOBBY
@@ -117,8 +239,7 @@ contract CofheHoldemPvP {
             seatOf[msg.sender] = 0;
         }
         require(seatOf[msg.sender] == 0, "Already seated");
-        if (balances[msg.sender] == 0) balances[msg.sender] = INITIAL_BALANCE;
-        require(balances[msg.sender] >= buyIn, "Insufficient balance");
+        _initBalance(msg.sender);
 
         tableId = nextTableId++;
         bytes32 code = isPrivate ? keccak256(abi.encodePacked(msg.sender, block.timestamp, tableId)) : bytes32(0);
@@ -135,6 +256,8 @@ contract CofheHoldemPvP {
 
         seatOf[msg.sender] = tableId;
         if (!isPrivate) openTableIds.push(tableId);
+
+        _requestBuyIn(tableId, msg.sender, true, buyIn);
         emit TableCreated(tableId, msg.sender, buyIn, isPrivate);
     }
 
@@ -164,6 +287,7 @@ contract CofheHoldemPvP {
         } else if (s == GS.BOTH_SEATED) {
             // Seated but not started — leave freely
             if (msg.sender == t.player2) {
+                _cashOutSeat(tableId, false);
                 seatOf[t.player2] = 0;
                 t.player2 = address(0);
                 t.state = GS.OPEN;
@@ -176,8 +300,12 @@ contract CofheHoldemPvP {
             // Active game — leaving = forfeit, opponent gets pot
             address opponent = msg.sender == t.player1 ? t.player2 : t.player1;
             _winByFold(tableId, opponent);
+            _cashOutSeat(tableId, true);
+            _cashOutSeat(tableId, false);
             _unseatBoth(tableId);
         } else if (s == GS.COMPLETE) {
+            _cashOutSeat(tableId, true);
+            _cashOutSeat(tableId, false);
             _unseatBoth(tableId);
         }
     }
@@ -187,6 +315,7 @@ contract CofheHoldemPvP {
         Table storage t = tables[tableId];
         require(t.state == GS.COMPLETE, "Game not complete");
         require(msg.sender == t.player1 || msg.sender == t.player2, "Not seated");
+        _cashOutSeat(tableId, msg.sender == t.player1);
         seatOf[msg.sender] = 0;
     }
 
@@ -211,8 +340,11 @@ contract CofheHoldemPvP {
 
             address winner = msg.sender;
             hands[tableId].winner = winner;
-            balances[winner] += t.pot;
+            if (winner == t.player1) t.p1Stack += t.pot;
+            else                     t.p2Stack += t.pot;
             t.state = GS.COMPLETE;
+            _cashOutSeat(tableId, true);
+            _cashOutSeat(tableId, false);
             _unseatBoth(tableId);
 
             emit PlayerTimedOut(tableId, t.nextToAct);
@@ -221,10 +353,12 @@ contract CofheHoldemPvP {
             // Showdown stuck — refund pot 50/50
             require(block.number >= t.turnStartBlock + TIMEOUT_BLOCKS, "Not timed out yet");
             uint256 half = t.pot / 2;
-            balances[t.player1] += half;
-            balances[t.player2] += t.pot - half;
+            t.p1Stack += half;
+            t.p2Stack += t.pot - half;
             hands[tableId].winner = address(0);
             t.state = GS.COMPLETE;
+            _cashOutSeat(tableId, true);
+            _cashOutSeat(tableId, false);
             _unseatBoth(tableId);
             emit HandComplete(tableId, address(0), t.pot);
         }
@@ -252,20 +386,23 @@ contract CofheHoldemPvP {
         Table storage t = tables[tableId];
         require(t.exists && (t.state == GS.BOTH_SEATED || t.state == GS.COMPLETE), "Cannot start");
         require(msg.sender == t.player1 || msg.sender == t.player2, "Not seated");
-        require(balances[t.player1] >= BB && balances[t.player2] >= BB, "Insufficient balance");
+        require(p1Fund[tableId].funded && p2Fund[tableId].funded, "Buy-in pending");
+        require(t.p1Stack >= BB && t.p2Stack >= BB, "Insufficient stack");
 
         t.handCount += 1;
 
         // Dealer rotation: odd hand → P1 is dealer/SB, even → P2 is dealer/SB
         bool p1IsDealer = (t.handCount % 2 == 1);
         address sbPlayer = p1IsDealer ? t.player1 : t.player2;
-        address bbPlayer = p1IsDealer ? t.player2 : t.player1;
+        bool sbIsP1 = (sbPlayer == t.player1);
 
         // Post blinds (capped by stack)
-        uint256 sbAmt = _min(SB, balances[sbPlayer]);
-        uint256 bbAmt = _min(BB, balances[bbPlayer]);
-        balances[sbPlayer] -= sbAmt;
-        balances[bbPlayer] -= bbAmt;
+        uint256 sbStack = sbIsP1 ? t.p1Stack : t.p2Stack;
+        uint256 bbStack = sbIsP1 ? t.p2Stack : t.p1Stack;
+        uint256 sbAmt = _min(SB, sbStack);
+        uint256 bbAmt = _min(BB, bbStack);
+        if (sbIsP1) { t.p1Stack -= sbAmt; t.p2Stack -= bbAmt; }
+        else        { t.p2Stack -= sbAmt; t.p1Stack -= bbAmt; }
 
         t.pot = sbAmt + bbAmt;
         t.state = GS.PREFLOP;
@@ -277,8 +414,8 @@ contract CofheHoldemPvP {
         t.currentBet = bbAmt;
         t.minRaise = BB;
         t.actionsThisRound = 0;
-        t.p1AllIn = (balances[t.player1] == 0);
-        t.p2AllIn = (balances[t.player2] == 0);
+        t.p1AllIn = (t.p1Stack == 0);
+        t.p2AllIn = (t.p2Stack == 0);
         t.turnStartBlock = block.number;
 
         Hand storage h = hands[tableId];
@@ -361,7 +498,7 @@ contract CofheHoldemPvP {
         bool isP1 = (player == t.player1);
         uint256 myBet = isP1 ? t.p1RoundBet : t.p2RoundBet;
         uint256 oppBet = isP1 ? t.p2RoundBet : t.p1RoundBet;
-        uint256 myStack = balances[player];
+        uint256 myStack = isP1 ? t.p1Stack : t.p2Stack;
         address opponent = isP1 ? t.player2 : t.player1;
 
         if (action == 3) { _winByFold(tableId, opponent); return; }
@@ -476,7 +613,8 @@ contract CofheHoldemPvP {
         address winner = timedOut == t.player1 ? t.player2 : t.player1;
 
         hands[tableId].winner = winner;
-        balances[winner] += t.pot;
+        if (winner == t.player1) t.p1Stack += t.pot;
+        else                     t.p2Stack += t.pot;
         t.state = GS.COMPLETE;
         _unseatBoth(tableId);
 
@@ -532,23 +670,23 @@ contract CofheHoldemPvP {
             // TIE — split pot
             uint256 half = t.pot / 2;
             uint256 remainder = t.pot - half * 2;
-            balances[t.player1] += half;
-            balances[t.player2] += half + remainder; // remainder to BB
+            t.p1Stack += half;
+            t.p2Stack += half + remainder; // remainder to BB
             h.winner = address(0); // tie marker
         } else if (p1WinsVal == 1) {
             // Side pot logic: P1 wins, but may have bet less
             uint256 p1CanWin = t.p1TotalBet * 2; // max P1 can win = 2x their investment
             uint256 winAmount = _min(p1CanWin, t.pot);
             uint256 returned = t.pot - winAmount;
-            balances[t.player1] += winAmount;
-            if (returned > 0) balances[t.player2] += returned;
+            t.p1Stack += winAmount;
+            if (returned > 0) t.p2Stack += returned;
             h.winner = t.player1;
         } else {
             uint256 p2CanWin = t.p2TotalBet * 2;
             uint256 winAmount = _min(p2CanWin, t.pot);
             uint256 returned = t.pot - winAmount;
-            balances[t.player2] += winAmount;
-            if (returned > 0) balances[t.player1] += returned;
+            t.p2Stack += winAmount;
+            if (returned > 0) t.p1Stack += returned;
             h.winner = t.player2;
         }
 
@@ -588,6 +726,22 @@ contract CofheHoldemPvP {
                 t.p1AllIn, t.p2AllIn, t.actionsThisRound, t.turnStartBlock);
     }
 
+    /// @notice Plaintext in-hand stacks (public — chips committed to this table).
+    function getStacks(uint256 tid) external view returns (uint256 p1Stack, uint256 p2Stack) {
+        Table storage t = tables[tid];
+        return (t.p1Stack, t.p2Stack);
+    }
+
+    /// @notice Whether each seat's buy-in decrypt task has resolved.
+    function getFundingStatus(uint256 tid) external view returns (bool p1Funded, bool p2Funded) {
+        return (p1Fund[tid].funded, p2Fund[tid].funded);
+    }
+
+    /// @notice True once both seats are funded and a hand can start.
+    function isFundingReady(uint256 tid) external view returns (bool) {
+        return p1Fund[tid].funded && p2Fund[tid].funded;
+    }
+
     function getMyCards(uint256 tid) external view returns (uint256 c0, uint256 c1) {
         Hand storage h = hands[tid];
         if (msg.sender == tables[tid].player1)
@@ -617,8 +771,15 @@ contract CofheHoldemPvP {
     function getResult(uint256 tid) external view returns (address winner, uint256 pot) {
         return (hands[tid].winner, tables[tid].pot);
     }
-    function getBalance() external view returns (uint256) { return balances[msg.sender]; }
-    function getBalanceOf(address a) external view returns (uint256) { return balances[a]; }
+
+    /// @notice Returns the caller's confidential bankroll ciphertext handle.
+    ///         Decrypt client-side via `cofheClient.decryptForView` + permit.
+    function getBalance() external view returns (uint256) {
+        return uint256(euint64.unwrap(encBalance[msg.sender]));
+    }
+    function getBalanceOf(address a) external view returns (uint256) {
+        return uint256(euint64.unwrap(encBalance[a]));
+    }
     function getMySeat() external view returns (uint256) { return seatOf[msg.sender]; }
 
     // ═══════════════════════════════════════════════════════════════
@@ -627,6 +788,8 @@ contract CofheHoldemPvP {
 
     function _closeTable(uint256 tableId) internal {
         Table storage t = tables[tableId];
+        _cashOutSeat(tableId, true);
+        _cashOutSeat(tableId, false);
         seatOf[t.player1] = 0;
         if (t.player2 != address(0)) seatOf[t.player2] = 0;
         t.state = GS.COMPLETE;
@@ -641,14 +804,13 @@ contract CofheHoldemPvP {
     }
 
     function _deductAndBet(Table storage t, bool isP1, uint256 amt) internal {
-        balances[isP1 ? t.player1 : t.player2] -= amt;
-        if (isP1) { t.p1RoundBet += amt; t.p1TotalBet += amt; }
-        else      { t.p2RoundBet += amt; t.p2TotalBet += amt; }
+        if (isP1) { t.p1Stack -= amt; t.p1RoundBet += amt; t.p1TotalBet += amt; }
+        else      { t.p2Stack -= amt; t.p2RoundBet += amt; t.p2TotalBet += amt; }
         t.pot += amt;
     }
 
     function _checkAllIn(Table storage t, bool isP1) internal {
-        if (balances[isP1 ? t.player1 : t.player2] == 0) {
+        if ((isP1 ? t.p1Stack : t.p2Stack) == 0) {
             if (isP1) t.p1AllIn = true; else t.p2AllIn = true;
         }
     }
@@ -662,7 +824,8 @@ contract CofheHoldemPvP {
     function _winByFold(uint256 tableId, address winner) internal {
         Table storage t = tables[tableId];
         hands[tableId].winner = winner;
-        balances[winner] += t.pot;
+        if (winner == t.player1) t.p1Stack += t.pot;
+        else                     t.p2Stack += t.pot;
         t.state = GS.COMPLETE;
         _unseatBoth(tableId);
         _revealAllCards(tableId);
@@ -726,12 +889,12 @@ contract CofheHoldemPvP {
         uint256 ps = seatOf[msg.sender];
         if (ps != 0 && tables[ps].state == GS.COMPLETE) seatOf[msg.sender] = 0;
         require(seatOf[msg.sender] == 0, "Already seated");
-        if (balances[msg.sender] == 0) balances[msg.sender] = INITIAL_BALANCE;
-        require(balances[msg.sender] >= t.buyIn, "Insufficient balance");
+        _initBalance(msg.sender);
         t.player2 = msg.sender;
         t.state = GS.BOTH_SEATED;
         t.turnStartBlock = block.number; // for lobby timeout tracking
         seatOf[msg.sender] = tableId;
+        _requestBuyIn(tableId, msg.sender, false, t.buyIn);
         emit PlayerJoined(tableId, msg.sender);
     }
 

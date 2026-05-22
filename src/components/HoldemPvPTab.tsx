@@ -123,12 +123,17 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
     } as any);
   }, [publicClient, address]);
 
+  // In-game balance = the plaintext table stack. The bankroll behind the table
+  // is FHE-encrypted — getBalance() returns a ciphertext handle, not a number.
   const refreshBalance = useCallback(async () => {
+    if (!tableId || !address) return;
     try {
-      const bal = Number(await readContract('getBalance') as bigint);
-      setBalance(bal);
+      const info = await readContract('getTableInfo', [BigInt(tableId)]) as [string, string, number, bigint, bigint, bigint, boolean, string];
+      const iAmP1 = info[0].toLowerCase() === address.toLowerCase();
+      const [s1, s2] = await readContract('getStacks', [BigInt(tableId)]) as [bigint, bigint];
+      setBalance(Number(iAmP1 ? s1 : s2));
     } catch { /* */ }
-  }, [readContract, setBalance]);
+  }, [readContract, setBalance, tableId, address]);
 
   const writeAndWait = useCallback(async (functionName: string, args?: unknown[]) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -143,6 +148,22 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
     ]);
     return hash;
   }, [writeContractAsync, publicClient]);
+
+  // Confidential buy-in: each seat committed an encrypted grant at create/join.
+  // A CoFHE decrypt task materialises it into the plaintext table stack.
+  // confirmFunding() is permissionless + idempotent — poll until both funded.
+  const ensureFunded = useCallback(async (tid: number): Promise<boolean> => {
+    const ready = async () => await readContract('isFundingReady', [BigInt(tid)]) as boolean;
+    if (await ready()) return true;
+    addLog('Confirming encrypted buy-in (FHE network)...');
+    for (let i = 0; i < 8; i++) {
+      try { await writeAndWait('confirmFunding', [BigInt(tid)]); }
+      catch { /* decrypt task may not be ready yet — retry */ }
+      if (await ready()) return true;
+      await new Promise(r => setTimeout(r, 8000));
+    }
+    return false;
+  }, [readContract, writeAndWait, addLog]);
 
   const stateToRound = (s: number): string => {
     switch (s) {
@@ -239,7 +260,8 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
           setHandResult({ winner, pot: Number(resPot) });
           _setLobbyState('result');
 
-          const bal = Number(await readContract('getBalance') as bigint);
+          const [s1c, s2c] = await readContract('getStacks', [BigInt(tableId)]) as [bigint, bigint];
+          const bal = Number(iAmP1 ? s1c : s2c);
           setBalance(bal);
           const delta = bal - prevBalanceRef.current;
 
@@ -695,6 +717,15 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
     prevBalanceRef.current = useGameStore.getState().balance;
     try {
       await ensurePermit();
+      // Confidential buy-in must be materialised before the hand can start.
+      setStatus('Confirming encrypted buy-in (FHE)...');
+      const funded = await ensureFunded(tableId);
+      if (!funded) {
+        setError('Buy-in funding timed out. Tap Start Hand to retry.');
+        _setLobbyState('seated');
+        setLoading(false);
+        return;
+      }
       SFX.deal();
       await writeAndWait('startHand', [BigInt(tableId)]);
       _setLobbyState('playing');
@@ -733,7 +764,7 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
       }
     }
     setLoading(false);
-  }, [tableId, writeAndWait, readContract, addLog, ensurePermit, refreshBalance, pollTableState]);
+  }, [tableId, writeAndWait, readContract, addLog, ensurePermit, refreshBalance, pollTableState, ensureFunded]);
 
   // Keep auto-start ref in sync
   autoStartRef.current = handleStartHand;

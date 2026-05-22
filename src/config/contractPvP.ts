@@ -1,5 +1,5 @@
 export const PVP_CONTRACT_ADDRESS = (
-  import.meta.env.VITE_PVP_CONTRACT_ADDRESS || '0xb68D932b97A575c1080dafaa0FF04475b8F7fDe8'
+  import.meta.env.VITE_PVP_CONTRACT_ADDRESS || '0xf9083474C2F15FDfb82115a8278c619ef6A46543'
 ) as `0x${string}`;
 
 export const PvPState = {
@@ -262,17 +262,45 @@ export const CIPHER_POKER_PVP_ABI = [
     outputs: [{ name: '', type: 'uint256' }],
   },
   {
-    name: 'balances',
+    name: 'seatOf',
     type: 'function',
     stateMutability: 'view',
     inputs: [{ name: '', type: 'address' }],
     outputs: [{ name: '', type: 'uint256' }],
   },
+  // ─── Confidential bankroll: buy-in funding flow ───────────────────
   {
-    name: 'seatOf',
+    name: 'confirmFunding',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'tableId', type: 'uint256' }],
+    outputs: [],
+  },
+  {
+    name: 'getFundingStatus',
     type: 'function',
     stateMutability: 'view',
-    inputs: [{ name: '', type: 'address' }],
+    inputs: [{ name: 'tableId', type: 'uint256' }],
+    outputs: [
+      { name: 'p1Funded', type: 'bool' },
+      { name: 'p2Funded', type: 'bool' },
+    ],
+  },
+  {
+    name: 'isFundingReady',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'tableId', type: 'uint256' }],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+  {
+    name: 'getStackOf',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'tableId', type: 'uint256' },
+      { name: 'player', type: 'address' },
+    ],
     outputs: [{ name: '', type: 'uint256' }],
   },
 

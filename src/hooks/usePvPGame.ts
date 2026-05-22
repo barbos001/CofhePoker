@@ -49,15 +49,43 @@ export const usePvPGame = () => {
     return hash;
   }, [writeContractAsync, publicClient]);
 
-  const readBalance = useCallback(async (): Promise<number> => {
-    if (!publicClient) return 0;
+  // In-hand chips = the plaintext table stack. The bankroll behind the table
+  // (getBalance) is FHE-encrypted and only relevant between sessions.
+  const readStack = useCallback(async (tableId: bigint): Promise<number> => {
+    if (!publicClient || !address) return 0;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const bal = await publicClient.readContract({
+    const stack = await publicClient.readContract({
       address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
-      functionName: 'getBalance', account: address,
+      functionName: 'getStackOf', args: [tableId, address],
     } as any) as bigint;
-    return Number(bal);
+    return Number(stack);
   }, [publicClient, address]);
+
+  // Confidential buy-in: both seats committed an encrypted grant at create/join.
+  // A CoFHE decrypt task materialises each grant into a plaintext table stack.
+  // confirmFunding() is permissionless + idempotent — poll it until both funded.
+  const ensureFunded = useCallback(async (tableId: bigint): Promise<boolean> => {
+    const readReady = async () =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      publicClient!.readContract({
+        address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
+        functionName: 'isFundingReady', args: [tableId],
+      } as any) as Promise<boolean>;
+
+    if (await readReady()) return true;
+    GAME('Buy-in decrypt pending — confirming funding…');
+    for (let i = 0; i < 8; i++) {
+      try {
+        await writeAndWait('confirmFunding', {
+          address: PVP_CONTRACT_ADDRESS, abi: CIPHER_POKER_PVP_ABI,
+          functionName: 'confirmFunding', args: [tableId],
+        });
+      } catch { /* decrypt task may not be ready yet — retry */ }
+      if (await readReady()) return true;
+      await sleep(8000);
+    }
+    return false;
+  }, [publicClient, writeAndWait]);
 
   const startPvPHand = useCallback(async () => {
     if (!isOnChain || !gs().tableId || actingRef.current) return;
@@ -67,6 +95,16 @@ export const usePvPGame = () => {
     try {
       GAME('═══ NEW PVP HAND ═══');
       gs().setPvPState('dealing');
+
+      // Confidential buy-in must be materialised before a hand can start.
+      gs().setStatus('Confirming encrypted buy-in (FHE network)…', '#B366FF');
+      const funded = await ensureFunded(tableId);
+      if (!funded) {
+        gs().setStatus('Buy-in funding timed out — try again.', '#FF3B3B');
+        gs().setPvPState('seated');
+        return;
+      }
+
       gs().setStatus('Dealing encrypted cards (FHE)…', '#B366FF');
 
       await writeAndWait('startPvPHand', {
@@ -123,7 +161,7 @@ export const usePvPGame = () => {
 
       gs().setPvPState('acting');
       gs().setStatus('Your turn — Play or Fold?', '#FFF');
-      gs().setBalance(await readBalance());
+      gs().setBalance(await readStack(tableId));
       gs().setPot(Number(info[3]));
 
     } catch (err) {
@@ -134,7 +172,7 @@ export const usePvPGame = () => {
     } finally {
       actingRef.current = false;
     }
-  }, [isOnChain, writeAndWait, publicClient, address, decryptCard, readBalance]);
+  }, [isOnChain, writeAndWait, publicClient, address, decryptCard, readStack, ensureFunded]);
 
   const pvpAct = useCallback(async (plays: boolean) => {
     if (!isOnChain || !gs().tableId || actingRef.current) return;
@@ -265,7 +303,7 @@ export const usePvPGame = () => {
     } finally {
       actingRef.current = false;
     }
-  }, [isOnChain, writeAndWait, publicClient, address, decryptPublicCard, readBalance]);
+  }, [isOnChain, writeAndWait, publicClient, address, decryptPublicCard, readStack]);
 
   const _finishHand = useCallback(async (tableId: bigint, txHash: `0x${string}`) => {
     if (!publicClient) return;
@@ -281,7 +319,7 @@ export const usePvPGame = () => {
     const wonAddr   = winner.toLowerCase();
     const iWon      = wonAddr === myAddr;
     const isDraw    = winner === '0x0000000000000000000000000000000000000000';
-    const newBal    = await readBalance();
+    const newBal    = await readStack(tableId);
 
     let result: 'WON' | 'LOST' | 'FOLD' | 'OPP_FOLD' | 'DRAW';
     let delta: number;
@@ -323,7 +361,7 @@ export const usePvPGame = () => {
     }
 
     gs().finishPvPHand({ result, delta, desc, pot: potNum, balance: newBal, txHash, opponentCards: oppCards });
-  }, [publicClient, address, readBalance, decryptPublicCard]);
+  }, [publicClient, address, readStack, decryptPublicCard]);
 
   return { startPvPHand, pvpAct, isOnChain };
 };
