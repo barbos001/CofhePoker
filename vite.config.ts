@@ -10,6 +10,8 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
+    // Force single instance of every package that uses React context or hooks
+    dedupe: ['react', 'react-dom', 'wagmi', 'viem', '@wagmi/core', '@tanstack/react-query'],
   },
 
   // TFHE (CoFHE WASM) requires SharedArrayBuffer → COOP/COEP headers
@@ -26,9 +28,21 @@ export default defineConfig({
   },
 
   build: {
-    // Keep tfhe out of the chunk graph too
+    target: 'esnext',
+    cssCodeSplit: true,
     rollupOptions: {
-      external: [],
+      output: {
+        manualChunks: {
+          // Wallet / web3 — rarely changes, good for long-term caching
+          'vendor-wagmi':    ['wagmi', 'viem', '@wagmi/core'],
+          'vendor-metamask': ['@metamask/sdk'],
+          // UI libs
+          'vendor-framer':   ['framer-motion'],
+          // Supabase
+          'vendor-supabase': ['@supabase/supabase-js'],
+          // NOTE: React intentionally NOT split — must stay in main chunk with Zustand
+        },
+      },
     },
   },
 

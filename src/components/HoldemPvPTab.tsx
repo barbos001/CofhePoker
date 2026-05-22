@@ -16,6 +16,9 @@ import { evaluate7 } from '@/lib/holdem';
 import { Card } from '@/components/ui/Card';
 import { sleep } from '@/lib/utils';
 import { SFX } from '@/hooks/useSounds';
+import { SpectatorView } from '@/components/ui/SpectatorView';
+import { FriendsPanel } from '@/components/ui/FriendsPanel';
+import { upsertActiveTable, removeActiveTable, updateElo } from '@/lib/db';
 
 const truncAddr = (a: string) => `${a.slice(0, 6)}...${a.slice(-4)}`;
 const LOG = (...a: unknown[]) => console.log('%c[H-PVP]', 'color:#00BFFF;font-weight:bold', ...a);
@@ -97,6 +100,9 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
   const autoStartRef = useRef<(() => void) | null>(null);
   const waitingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [waitingCountdown, setWaitingCountdown] = useState<number | null>(null);
+  const [spectatorMode, setSpectatorMode] = useState(false);
+  // Track if we've already upserted this table to Supabase (avoid duplicate calls)
+  const activeTableSyncedRef = useRef(false);
 
   const addLog = useCallback((msg: string) => {
     // Dedup: skip if identical to last message
@@ -117,18 +123,31 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
     } as any);
   }, [publicClient, address]);
 
+  // In-game balance = the plaintext table stack. The bankroll behind the table
+  // is FHE-encrypted — getBalance() returns a ciphertext handle, not a number.
   const refreshBalance = useCallback(async () => {
+    if (!tableId || !address) return;
     try {
-      const bal = Number(await readContract('getBalance') as bigint);
-      setBalance(bal);
+      const info = await readContract('getTableInfo', [BigInt(tableId)]) as [string, string, number, bigint, bigint, bigint, boolean, string];
+      const iAmP1 = info[0].toLowerCase() === address.toLowerCase();
+      const [s1, s2] = await readContract('getStacks', [BigInt(tableId)]) as [bigint, bigint];
+      setBalance(Number(iAmP1 ? s1 : s2));
     } catch { /* */ }
-  }, [readContract, setBalance]);
+  }, [readContract, setBalance, tableId, address]);
 
   const writeAndWait = useCallback(async (functionName: string, args?: unknown[]) => {
+    // FHE-heavy txs under-report in eth_estimateGas and OOG without an explicit
+    // gasLimit. Limits below are sized from observed on-chain gasUsed.
+    const GAS: Record<string, bigint> = {
+      createTable: 1_500_000n, joinTable: 1_500_000n, startHand: 3_500_000n,
+      act: 2_500_000n, fold: 3_500_000n, submitRound: 5_000_000n,
+      computeShowdown: 36_000_000n, resolveShowdown: 3_000_000n,
+      confirmFunding: 600_000n, cashOut: 2_000_000n, leaveTable: 2_500_000n,
+    };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const hash = await writeContractAsync({
       address: HOLDEM_PVP_CONTRACT_ADDRESS, abi: CIPHER_HOLDEM_PVP_ABI,
-      functionName, args,
+      functionName, args, gas: GAS[functionName],
     } as any);
     const TX_TIMEOUT = 60_000;
     await Promise.race([
@@ -137,6 +156,22 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
     ]);
     return hash;
   }, [writeContractAsync, publicClient]);
+
+  // Confidential buy-in: each seat committed an encrypted grant at create/join.
+  // A CoFHE decrypt task materialises it into the plaintext table stack.
+  // confirmFunding() is permissionless + idempotent — poll until both funded.
+  const ensureFunded = useCallback(async (tid: number): Promise<boolean> => {
+    const ready = async () => await readContract('isFundingReady', [BigInt(tid)]) as boolean;
+    if (await ready()) return true;
+    addLog('Confirming encrypted buy-in (FHE network)...');
+    for (let i = 0; i < 8; i++) {
+      try { await writeAndWait('confirmFunding', [BigInt(tid)]); }
+      catch { /* decrypt task may not be ready yet — retry */ }
+      if (await ready()) return true;
+      await new Promise(r => setTimeout(r, 8000));
+    }
+    return false;
+  }, [readContract, writeAndWait, addLog]);
 
   const stateToRound = (s: number): string => {
     switch (s) {
@@ -217,6 +252,11 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
         _setLobbyState('playing');
         setRoundName(rn);
         setStatus(myTurn ? `${rn} — Your turn` : `${rn} — Waiting for opponent...`);
+        // Sync spectator feed (deduplicated — only when state or pot changes)
+        if (!activeTableSyncedRef.current || rn !== roundName || Number(potVal) !== pot) {
+          activeTableSyncedRef.current = true;
+          upsertActiveTable({ table_id: tableId, player1: p1, player2: p2, state, pot: Number(potVal), round_name: rn }).catch(() => {});
+        }
       } else if (state === HoldemPvPState.AWAITING_SHOWDOWN) {
         if (lobbyStateRef.current !== 'showdown') addLog('All rounds complete — Showdown');
         _setLobbyState('showdown');
@@ -228,9 +268,13 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
           setHandResult({ winner, pot: Number(resPot) });
           _setLobbyState('result');
 
-          const bal = Number(await readContract('getBalance') as bigint);
+          const [s1c, s2c] = await readContract('getStacks', [BigInt(tableId)]) as [bigint, bigint];
+          const bal = Number(iAmP1 ? s1c : s2c);
           setBalance(bal);
           const delta = bal - prevBalanceRef.current;
+
+          // Remove from active tables spectator feed
+          removeActiveTable(tableId).catch(() => {});
 
           // Sound
           const ZERO = '0x0000000000000000000000000000000000000000';
@@ -259,7 +303,14 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
               txHash:  '',
               playerCards: [...myCards],
               botCards:    revOppCards,
+              gameMode:    'pvp',
             });
+            // Update Elo for both players
+            if (!isPush && opp && opp !== ZERO) {
+              const winnerAddr  = iWon ? address! : opp;
+              const loserAddr   = iWon ? opp : address!;
+              updateElo(winnerAddr, loserAddr).catch(() => {});
+            }
           }
         }
       }
@@ -523,8 +574,10 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
 
       setTableId(seat);
       setIsCreator(true);
+      activeTableSyncedRef.current = false;
       _setLobbyState('waiting');
       addLog(`Table #${seat} created (${isPrivate ? 'private' : 'public'})`);
+      upsertActiveTable({ table_id: seat, player1: address!, player2: '', state: HoldemPvPState.OPEN, pot: 0, buy_in: buyIn, is_private: isPrivate, round_name: '' }).catch(() => {});
 
       // For private: fetch invite code — show as "tableId:code"
       if (isPrivate) {
@@ -572,11 +625,14 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
       const state = info[2];
       if (state !== HoldemPvPState.OPEN) { setError('Table is no longer open'); setLoading(false); return; }
       if (info[1] !== '0x0000000000000000000000000000000000000000') { setError('Table is full'); setLoading(false); return; }
+      if (info[0].toLowerCase() === address?.toLowerCase()) { setError('Cannot join your own table'); setLoading(false); return; }
 
       await writeAndWait('joinTable', [BigInt(id)]);
       setTableId(id);
       setIsCreator(false);
+      activeTableSyncedRef.current = false;
       _setLobbyState('seated');
+      upsertActiveTable({ table_id: id, player1: info[0], player2: address!, state: HoldemPvPState.BOTH_SEATED, buy_in: Number(info[5]), is_private: info[6] }).catch(() => {});
       LOG(`Joined table #${id}`);
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
     setLoading(false);
@@ -669,6 +725,15 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
     prevBalanceRef.current = useGameStore.getState().balance;
     try {
       await ensurePermit();
+      // Confidential buy-in must be materialised before the hand can start.
+      setStatus('Confirming encrypted buy-in (FHE)...');
+      const funded = await ensureFunded(tableId);
+      if (!funded) {
+        setError('Buy-in funding timed out. Tap Start Hand to retry.');
+        _setLobbyState('seated');
+        setLoading(false);
+        return;
+      }
       SFX.deal();
       await writeAndWait('startHand', [BigInt(tableId)]);
       _setLobbyState('playing');
@@ -707,21 +772,21 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
       }
     }
     setLoading(false);
-  }, [tableId, writeAndWait, readContract, addLog, ensurePermit, refreshBalance, pollTableState]);
+  }, [tableId, writeAndWait, readContract, addLog, ensurePermit, refreshBalance, pollTableState, ensureFunded]);
 
   // Keep auto-start ref in sync
   autoStartRef.current = handleStartHand;
 
   const handleLeave = useCallback(async () => {
     if (!tableId) return;
-    // Immediately go back to lobby — don't wait for TX
     const tid = tableId;
     setTableId(null);
     _setLobbyState('idle');
     setMyCards([]); setCommunityCards([]); setOppCards([]);
     setError('');
     setStatus('');
-    // Fire TX in background
+    activeTableSyncedRef.current = false;
+    removeActiveTable(tid).catch(() => {});
     writeAndWait('leaveTable', [BigInt(tid)]).then(() => refreshLobby()).catch(() => {});
   }, [tableId, writeAndWait, refreshLobby]);
 
@@ -874,7 +939,7 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
         {/* ── Hero header ── */}
         <motion.div
           initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-          className="text-center mb-10"
+          className="text-center mb-6"
         >
           <h1
             className="uppercase mb-2"
@@ -903,6 +968,37 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
             {tables.length > 0 ? `${tables.length} open table${tables.length !== 1 ? 's' : ''} · join or create` : 'No open tables · be the first to create one'}
           </p>
         </motion.div>
+
+        {/* ── Play / Spectate tab bar + Friends ── */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex gap-1 p-1 rounded-xl" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+            {(['play', 'spectate'] as const).map(tab => (
+              <button
+                key={tab}
+                onClick={() => setSpectatorMode(tab === 'spectate')}
+                className="px-5 py-2 rounded-lg font-mono text-[11px] tracking-widest uppercase transition-all"
+                style={{
+                  background: (tab === 'play') === !spectatorMode ? 'rgba(0,191,255,0.15)' : 'transparent',
+                  color:      (tab === 'play') === !spectatorMode ? '#00BFFF' : 'rgba(255,255,255,0.35)',
+                  border:     (tab === 'play') === !spectatorMode ? '1px solid rgba(0,191,255,0.3)' : '1px solid transparent',
+                }}
+              >
+                {tab === 'play' ? '🎮 Play' : '👁 Spectate'}
+              </button>
+            ))}
+          </div>
+          {isConnected && <FriendsPanel activeTableId={null} onAcceptInvite={(tid, _from) => { setTableId(tid); _setLobbyState('seated'); setIsCreator(false); }} />}
+        </div>
+
+        {/* ── Spectator mode ── */}
+        {spectatorMode && (
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+            <SpectatorView />
+          </motion.div>
+        )}
+
+        {/* ── Normal play view ── */}
+        {!spectatorMode && (<>
 
         {/* ── Vault balance banner (real money mode) ── */}
         {realMoneyMode && (
@@ -1239,6 +1335,7 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
             )}
           </motion.div>
         </div>
+        </>)}
       </div>
     );
   }
@@ -1261,6 +1358,7 @@ export const HoldemPvPTab = ({ roomLink }: HoldemPvPProps) => {
             <h2 className="uppercase mb-1" style={{ ...cp(700, 28, '0.06em'), color: '#00BFFF' }}>Waiting for Opponent</h2>
             <p style={{ ...cp(400, 12, '0.06em'), color: 'rgba(255,255,255,0.35)' }}>Table #{tableId} · open to join</p>
           </div>
+          <FriendsPanel activeTableId={tableId} onAcceptInvite={() => {}} />
 
           {/* Private room — share invite */}
           {isPrivate && inviteCode && (

@@ -2,6 +2,9 @@
 pragma solidity ^0.8.25;
 
 import "@fhenixprotocol/cofhe-contracts/FHE.sol";
+import {ITaskManager} from "@fhenixprotocol/cofhe-contracts/ICofhe.sol";
+
+address constant TASK_MANAGER_3C = 0xeA30c4B8b44078Bbf8a6ef5b9f1eC1626C7848D9;
 
 /// @title CofhePoker
 /// @notice 3-card poker game where all card values are FHE-encrypted.
@@ -182,7 +185,7 @@ contract CofhePoker {
     {
         Hand storage h = hands[tableId];
         // Verify the FHE network's attestation before trusting the plaintext result.
-        FHE.publishDecryptResult(h.botDecryptHandle, result, signature);
+        ITaskManager(TASK_MANAGER_3C).publishDecryptResult(uint256(h.botDecryptHandle), result, signature);
 
         bool botPlays = (result == 1);
 
@@ -217,7 +220,7 @@ contract CofhePoker {
         inState(tableId, GameState.AWAITING_SHOWDOWN)
     {
         Hand storage h = hands[tableId];
-        FHE.publishDecryptResult(h.showdownDecryptHandle, result, signature);
+        ITaskManager(TASK_MANAGER_3C).publishDecryptResult(uint256(h.showdownDecryptHandle), result, signature);
 
         Table storage t = tables[tableId];
         bool playerWins = (result == 1);

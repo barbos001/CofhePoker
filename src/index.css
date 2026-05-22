@@ -37,8 +37,7 @@
   }
 
   body {
-    background: linear-gradient(160deg, #09091E 0%, #050512 60%, #08080F 100%);
-    background-attachment: fixed;
+    background: #09091E;
     color: var(--color-text-primary);
     font-family: 'Chakra Petch', sans-serif;
     overflow-x: hidden;
@@ -324,4 +323,64 @@
 @keyframes slide-out-to-left {
   from { transform: translateX(0);     opacity: 1; }
   to   { transform: translateX(-60px); opacity: 0; }
+}
+
+/* ── Accessibility: focus-visible ────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid #FFE03D;
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+/* Remove outline for mouse users */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ── Screen reader only utility ──────────────────────────────────── */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── High contrast mode ──────────────────────────────────────────── */
+@media (prefers-contrast: high) {
+  :root {
+    --color-primary: #FFFF00;
+    --color-success: #00FF00;
+    --color-danger:  #FF0000;
+    --color-fhe:     #FF88FF;
+  }
+  button, [role="button"] {
+    border: 2px solid currentColor !important;
+  }
+}
+
+/* ── Reduced motion ──────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── High contrast toggle class ─────────────────────────────────── */
+.high-contrast {
+  --color-primary: #FFFF00;
+  --color-success: #00FF00;
+  --color-danger:  #FF0000;
+  --color-fhe:     #FF88FF;
+  --color-text-primary: #FFFFFF;
+  background: #000000 !important;
+}
+.high-contrast button {
+  border: 2px solid currentColor !important;
 }

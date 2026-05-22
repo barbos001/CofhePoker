@@ -2,6 +2,9 @@
 pragma solidity ^0.8.25;
 
 import "@fhenixprotocol/cofhe-contracts/FHE.sol";
+import {ITaskManager} from "@fhenixprotocol/cofhe-contracts/ICofhe.sol";
+
+address constant TASK_MANAGER_PVPC = 0xeA30c4B8b44078Bbf8a6ef5b9f1eC1626C7848D9;
 
 /// @title CofhePokerPvP
 /// @notice Multiplayer 3-card poker with FHE-encrypted cards, lobby, friends, and invites.
@@ -16,14 +19,15 @@ import "@fhenixprotocol/cofhe-contracts/FHE.sol";
 ///   • FHE.allowPublic(ct)     — called only at game completion (fold or showdown) to make
 ///                               cards observable to all. Never called before COMPLETE state.
 ///
-///   allowGlobal and allowTransient are intentionally absent — same rationale as CofhePoker.
-///
-/// @dev Amount leakage note:
-///   All chip amounts (ANTE, pot, balances) are stored as plaintext uint256. There is no
-///   payable function and no msg.value usage — no real ETH moves. Virtual chips are an
-///   acceptable plaintext for MVP because they carry no monetary value on-chain. If real
-///   stakes are added in the future, bet sizes must be FHE-encrypted (euint64) to prevent
-///   opponents from deducing hand strength from bet amounts.
+/// @dev Confidential bankroll (Wave 5):
+///   A player's chip bankroll is stored as an FHE-encrypted euint64 (`encBalance`). On-chain,
+///   nobody — not opponents, not validators, not spectators — can read it; only the owner can
+///   `decryptForView` it via permit. To sit at a table the player commits a public `buyIn`:
+///   the contract subtracts an encrypted `grant = min(encBalance, buyIn)` and runs a CoFHE
+///   decrypt task to convert that grant into the table's plaintext stack. The in-hand stack
+///   and pot are plaintext (a poker round cannot progress on ciphertext), but the *bankroll
+///   behind the table* — every chip not committed to this specific table — stays encrypted.
+///   On leaving, the remaining stack is folded back into the encrypted bankroll.
 ///
 /// @dev Action privacy note:
 ///   pvpAct(bool plays) submits the play/fold decision as a plaintext boolean. A validator
@@ -70,12 +74,27 @@ contract CofhePokerPvP {
         bytes32    showdownHandle;
     }
 
+    /// @dev A player's seat at a table. `stack` is the plaintext chips in play
+    ///      (unavoidably public — a poker round cannot progress on ciphertext).
+    ///      `funded` is set once the buy-in has been debited from the bankroll.
+    struct Seat {
+        uint256 stack;
+        bool    funded;
+    }
+
     //  Storage
 
     mapping(uint256 => PvPTable) public pvpTables;
     mapping(uint256 => PvPHand)  internal pvpHands;
     mapping(address => uint256)  public seatOf;        // player → tableId (0 = not seated)
-    mapping(address => uint256)  public balances;
+
+    // Confidential bankroll — encrypted, ACL-gated to the owner only.
+    mapping(address => euint64) internal encBalance;
+    mapping(address => bool)    internal balanceInit;
+
+    // Per-table seats (plaintext in-hand stack + pending encrypted buy-in).
+    mapping(uint256 => Seat) internal p1Seat;
+    mapping(uint256 => Seat) internal p2Seat;
 
     uint256 public nextTableId = 1;
     uint256 public constant ANTE            = 10;
@@ -99,6 +118,7 @@ contract CofhePokerPvP {
     event PvPHandStarted(uint256 indexed tableId, uint256 handId);
     event PvPAction(uint256 indexed tableId, address indexed player, string action);
     event PvPHandComplete(uint256 indexed tableId, address winner, uint256 pot);
+    event SeatFunded(uint256 indexed tableId, address indexed player, uint256 stack);
 
     event FriendRequestSent(address indexed from, address indexed to);
     event FriendRequestAccepted(address indexed from, address indexed to);
@@ -120,15 +140,65 @@ contract CofhePokerPvP {
         _;
     }
 
+    //  Confidential bankroll
+
+    /// @notice First-touch bankroll initialisation — every new player gets INITIAL_BALANCE,
+    ///         born encrypted on-chain. ACL-gated so only the owner can ever decrypt it.
+    function _initBalance(address p) internal {
+        if (!balanceInit[p]) {
+            balanceInit[p] = true;
+            euint64 b = FHE.asEuint64(INITIAL_BALANCE);
+            FHE.allowThis(b);
+            FHE.allow(b, p);
+            encBalance[p] = b;
+        }
+    }
+
+    /// @dev Commit a buy-in: debit it from the player's confidential bankroll and
+    ///      open the seat's plaintext table stack. The bankroll debit is clamped by
+    ///      FHE.min so the encrypted bankroll can never underflow and is never revealed.
+    ///      Buy-in sufficiency (buyIn <= bankroll) is enforced client-side — the player
+    ///      can decrypt their own bankroll — and buyIn is capped on-chain.
+    function _buyIn(uint256 tableId, address p, bool isP1, uint256 buyIn) internal {
+        euint64 debit  = FHE.min(encBalance[p], FHE.asEuint64(buyIn));
+        euint64 newBal = FHE.sub(encBalance[p], debit);
+        FHE.allowThis(newBal);
+        FHE.allow(newBal, p);
+        encBalance[p] = newBal;
+
+        Seat storage s = isP1 ? p1Seat[tableId] : p2Seat[tableId];
+        s.stack  = buyIn;
+        s.funded = true;
+        emit SeatFunded(tableId, p, buyIn);
+    }
+
+    /// @notice Retained for ABI compatibility — buy-in is synchronous, so a seat is
+    ///         funded the moment its table is created/joined. No-op.
+    function confirmFunding(uint256) external {}
+
+    /// @dev Fold a seat's chips back into the player's confidential bankroll on leave.
+    ///      Handles both the funded case (return plaintext stack) and the still-pending
+    ///      case (return the encrypted grant) so chips are never lost.
+    function _cashOut(uint256 tableId, address p, bool isP1) internal {
+        Seat storage s = isP1 ? p1Seat[tableId] : p2Seat[tableId];
+        if (s.funded && s.stack > 0) {
+            euint64 nb = FHE.add(encBalance[p], FHE.asEuint64(s.stack));
+            FHE.allowThis(nb);
+            FHE.allow(nb, p);
+            encBalance[p] = nb;
+        }
+        s.stack  = 0;
+        s.funded = false;
+    }
+
     //  Lobby
 
-    /// @notice Create a PvP table. If first interaction, initialises chip balance.
+    /// @notice Create a PvP table and commit the creator's buy-in from their confidential bankroll.
     function createPvPTable(uint256 buyIn, bool isPrivate) external returns (uint256 tableId) {
         require(seatOf[msg.sender] == 0, "Already seated at a table");
-        require(buyIn >= ANTE, "Buy-in too low");
+        require(buyIn >= ANTE && buyIn <= INITIAL_BALANCE, "Bad buy-in");
 
-        if (balances[msg.sender] == 0) balances[msg.sender] = INITIAL_BALANCE;
-        require(balances[msg.sender] >= buyIn, "Insufficient chips");
+        _initBalance(msg.sender);
 
         tableId = nextTableId++;
         bytes32 code = isPrivate
@@ -154,6 +224,8 @@ contract CofhePokerPvP {
             openTableIds.push(tableId);
         }
 
+        _buyIn(tableId, msg.sender, true, buyIn);
+
         emit PvPTableCreated(tableId, msg.sender, buyIn, isPrivate);
     }
 
@@ -175,8 +247,7 @@ contract CofhePokerPvP {
         require(seatOf[msg.sender] == 0, "Already seated");
         require(msg.sender != t.player1, "Cannot join your own table");
 
-        if (balances[msg.sender] == 0) balances[msg.sender] = INITIAL_BALANCE;
-        require(balances[msg.sender] >= t.buyIn, "Insufficient chips");
+        _initBalance(msg.sender);
 
         t.player2 = msg.sender;
         t.state   = PvPState.BOTH_SEATED;
@@ -185,10 +256,13 @@ contract CofhePokerPvP {
         // Remove from lobby listing
         _removeFromOpenTables(tableId);
 
+        _buyIn(tableId, msg.sender, false, t.buyIn);
+
         emit PlayerJoined(tableId, msg.sender);
     }
 
-    /// @notice Leave a table (only if no active hand).
+    /// @notice Leave a table (only if no active hand). Remaining stacks are cashed out
+    ///         back into each player's confidential bankroll.
     function leaveTable(uint256 tableId) external onlySeated(tableId) {
         PvPTable storage t = pvpTables[tableId];
         require(
@@ -201,13 +275,18 @@ contract CofhePokerPvP {
         emit PlayerLeft(tableId, msg.sender);
 
         if (msg.sender == t.player1) {
-            // Creator leaves → close table
-            if (t.player2 != address(0)) seatOf[t.player2] = 0;
+            // Creator leaves → close table, cash out both
+            _cashOut(tableId, t.player1, true);
+            if (t.player2 != address(0)) {
+                _cashOut(tableId, t.player2, false);
+                seatOf[t.player2] = 0;
+            }
             seatOf[msg.sender] = 0;
             t.state = PvPState.COMPLETE;
             _removeFromOpenTables(tableId);
         } else {
             // Player2 leaves → table reopens
+            _cashOut(tableId, t.player2, false);
             seatOf[msg.sender] = 0;
             t.player2 = address(0);
             t.state   = PvPState.OPEN;
@@ -322,7 +401,7 @@ contract CofhePokerPvP {
 
     //  PvP Game
 
-    /// @notice Start a hand. Either player can call when both are seated.
+    /// @notice Start a hand. Either player can call when both are seated and funded.
     function startPvPHand(uint256 tableId) external onlySeated(tableId) {
         PvPTable storage t = pvpTables[tableId];
         require(
@@ -330,10 +409,14 @@ contract CofhePokerPvP {
             "Cannot start hand now"
         );
         require(t.player2 != address(0), "Need opponent");
-        require(balances[t.player1] >= ANTE && balances[t.player2] >= ANTE, "Insufficient chips");
+        require(p1Seat[tableId].funded && p2Seat[tableId].funded, "Buy-in pending");
+        require(
+            p1Seat[tableId].stack >= ANTE && p2Seat[tableId].stack >= ANTE,
+            "Insufficient chips"
+        );
 
-        balances[t.player1] -= ANTE;
-        balances[t.player2] -= ANTE;
+        p1Seat[tableId].stack -= ANTE;
+        p2Seat[tableId].stack -= ANTE;
         t.pot        = ANTE * 2;
         t.handCount += 1;
         t.state      = PvPState.DEALING;
@@ -360,24 +443,22 @@ contract CofhePokerPvP {
         PvPTable storage t = pvpTables[tableId];
         PvPHand  storage h = pvpHands[tableId];
 
-        if (msg.sender == t.player1) {
+        bool isP1 = (msg.sender == t.player1);
+        if (isP1) {
             require(!h.p1Acted, "Already acted");
             h.p1Acted  = true;
             h.p1Played = plays;
-            if (plays) {
-                require(balances[msg.sender] >= ANTE, "Insufficient chips");
-                balances[msg.sender] -= ANTE;
-                t.pot += ANTE;
-            }
         } else {
             require(!h.p2Acted, "Already acted");
             h.p2Acted  = true;
             h.p2Played = plays;
-            if (plays) {
-                require(balances[msg.sender] >= ANTE, "Insufficient chips");
-                balances[msg.sender] -= ANTE;
-                t.pot += ANTE;
-            }
+        }
+
+        if (plays) {
+            Seat storage s = isP1 ? p1Seat[tableId] : p2Seat[tableId];
+            require(s.stack >= ANTE, "Insufficient chips");
+            s.stack -= ANTE;
+            t.pot   += ANTE;
         }
 
         emit PvPAction(tableId, msg.sender, plays ? "play" : "fold");
@@ -395,14 +476,14 @@ contract CofhePokerPvP {
         if (!h.p1Played && !h.p2Played) {
             // Both fold — split pot
             uint256 half = t.pot / 2;
-            balances[t.player1] += half;
-            balances[t.player2] += t.pot - half;
+            p1Seat[tableId].stack += half;
+            p2Seat[tableId].stack += t.pot - half;
             h.winner = address(0);
             t.state  = PvPState.COMPLETE;
             emit PvPHandComplete(tableId, address(0), t.pot);
         } else if (!h.p1Played) {
             // P1 folded — P2 wins
-            balances[t.player2] += t.pot;
+            p2Seat[tableId].stack += t.pot;
             h.winner = t.player2;
             t.state  = PvPState.COMPLETE;
             // ACL: allowPublic at fold resolution — both hands broadcast so players can review.
@@ -411,7 +492,7 @@ contract CofhePokerPvP {
             emit PvPHandComplete(tableId, t.player2, t.pot);
         } else if (!h.p2Played) {
             // P2 folded — P1 wins
-            balances[t.player1] += t.pot;
+            p1Seat[tableId].stack += t.pot;
             h.winner = t.player1;
             t.state  = PvPState.COMPLETE;
             // ACL: allowPublic at fold resolution — both hands broadcast so players can review.
@@ -432,16 +513,16 @@ contract CofhePokerPvP {
         external inPvPState(tableId, PvPState.AWAITING_SHOWDOWN)
     {
         PvPHand storage h = pvpHands[tableId];
-        FHE.publishDecryptResult(h.showdownHandle, result, signature);
+        ITaskManager(TASK_MANAGER_PVPC).publishDecryptResult(uint256(h.showdownHandle), result, signature);
 
         PvPTable storage t = pvpTables[tableId];
         bool p1Wins = (result == 1);
 
         if (p1Wins) {
-            balances[t.player1] += t.pot;
+            p1Seat[tableId].stack += t.pot;
             h.winner = t.player1;
         } else {
-            balances[t.player2] += t.pot;
+            p2Seat[tableId].stack += t.pot;
             h.winner = t.player2;
         }
 
@@ -513,12 +594,33 @@ contract CofhePokerPvP {
         return (pvpHands[tableId].winner, pvpTables[tableId].pot);
     }
 
+    /// @notice Returns the caller's confidential bankroll ciphertext handle.
+    ///         Decrypt client-side via `cofheClient.decryptForView` + permit.
+    ///         An opponent calling this for their own address only ever sees a handle.
     function getBalance() external view returns (uint256) {
-        return balances[msg.sender];
+        return uint256(euint64.unwrap(encBalance[msg.sender]));
     }
 
     function getBalanceOf(address addr) external view returns (uint256) {
-        return balances[addr];
+        return uint256(euint64.unwrap(encBalance[addr]));
+    }
+
+    /// @notice Plaintext in-hand stack for a seat (public — chips committed to this table).
+    function getStackOf(uint256 tableId, address player) external view returns (uint256) {
+        PvPTable storage t = pvpTables[tableId];
+        if (player == t.player1) return p1Seat[tableId].stack;
+        if (player == t.player2) return p2Seat[tableId].stack;
+        return 0;
+    }
+
+    /// @notice Whether each seat's buy-in decrypt task has resolved.
+    function getFundingStatus(uint256 tableId) external view returns (bool p1Funded, bool p2Funded) {
+        return (p1Seat[tableId].funded, p2Seat[tableId].funded);
+    }
+
+    /// @notice True once both seats are funded and a hand can start.
+    function isFundingReady(uint256 tableId) external view returns (bool) {
+        return p1Seat[tableId].funded && p2Seat[tableId].funded;
     }
 
     function getMySeat() external view returns (uint256) {

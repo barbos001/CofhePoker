@@ -13,6 +13,17 @@ import { ETH_TOKEN } from '@/config/vault';
 
 export type VaultToken = typeof ETH_TOKEN | `0x${string}`;
 
+export interface VaultTxRecord {
+  id:        string;
+  type:      'deposit' | 'withdraw';
+  token:     'ETH' | 'USDT';
+  amount:    string;
+  usdValue:  string;
+  txHash:    string;
+  timestamp: number;
+  status:    'confirmed' | 'failed';
+}
+
 // ─── Conversion helpers (pure, no hooks) ─────────────────────────────────────
 
 /** Convert 18-dec USD → ETH wei. */
@@ -83,6 +94,16 @@ interface VaultStore {
   setSelectedToken:  (t: VaultToken) => void;
   setWalletPanelOpen:(v: boolean) => void;
 
+  // Transaction history + rake
+  txHistory:     VaultTxRecord[];
+  rakePaidTotal: bigint;
+  addTxRecord:   (r: VaultTxRecord) => void;
+  addRake:       (amount: bigint) => void;
+
+  // Price refresh state
+  priceLastFetch: number;
+  setPriceLastFetch: (t: number) => void;
+
   // Derived helpers
   freeBalance:    (token: VaultToken) => bigint;
   lockedBalance:  (token: VaultToken) => bigint;
@@ -100,6 +121,9 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   realMoneyMode:   false,
   selectedToken:   ETH_TOKEN,
   walletPanelOpen: false,
+  txHistory:         [],
+  rakePaidTotal:     0n,
+  priceLastFetch:    0,
 
   setEthFree:         (v) => set({ ethFree: v }),
   setEthLocked:       (v) => set({ ethLocked: v }),
@@ -110,6 +134,10 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   setRealMoneyMode:   (v) => set({ realMoneyMode: v }),
   setSelectedToken:   (t) => set({ selectedToken: t }),
   setWalletPanelOpen: (v) => set({ walletPanelOpen: v }),
+
+  addTxRecord: (r) => set(s => ({ txHistory: [r, ...s.txHistory].slice(0, 50) })),
+  addRake: (amount) => set(s => ({ rakePaidTotal: s.rakePaidTotal + amount })),
+  setPriceLastFetch: (t) => set({ priceLastFetch: t }),
 
   freeBalance: (token) => {
     const s = get();

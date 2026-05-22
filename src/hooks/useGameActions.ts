@@ -176,7 +176,7 @@ export const useGameActions = () => {
       GAME(`Bot hand: ${bEval.name} (score ${bEval.score})`);
     }
 
-    store.finishHand({ result, delta, desc, pot: potNum, balance: newBalance, txHash, botCards });
+    store.finishHand({ result, delta, desc, pot: potNum, balance: newBalance, txHash, botCards, gameMode: 'three-card' });
   }, [publicClient, address, store, readBalance, decryptPublicCard]);
 
   const getTableState = useCallback(async (tableId: bigint): Promise<number> => {

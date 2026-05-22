@@ -91,7 +91,8 @@ export const useVault = () => {
         ethFree, ethLocked,
         usdtFree, usdtLocked,
         ethUsdPrice: price,
-        priceStale: stale,
+        priceStale:  stale,
+        priceLastFetch: Date.now(),
       });
     } catch {
       // Silently ignore if contract not yet deployed

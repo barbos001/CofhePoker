@@ -3,7 +3,10 @@ import { useGameStore } from '@/store/useGameStore';
 import { Pill } from '@/components/ui/Pill';
 import { CountUp } from '@/components/ui/TextFX';
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { usePublicClient } from 'wagmi';
 import { CONTRACT_ADDRESS } from '@/config/contract';
+import { PVP_CONTRACT_ADDRESS } from '@/config/contractPvP';
+import { HOLDEM_PVP_CONTRACT_ADDRESS } from '@/config/contractHoldemPvP';
 
 const ETHERSCAN_URL = `https://sepolia.etherscan.io/address/${CONTRACT_ADDRESS}`;
 
@@ -591,32 +594,34 @@ const ScrollProgressBar = () => {
   );
 };
 
-/* ── Live stats with session-persistent counts ───────────────────── */
+/* ── Live on-chain stats — real PvP tables created across both FHE contracts ── */
 const useLiveStats = () => {
-  const [handsPlayed, setHandsPlayed] = useState(() => {
-    try { return parseInt(sessionStorage.getItem('lp_hands') ?? '0', 10) || Math.floor(Math.random() * 800 + 3200); } catch { return 4128; }
-  });
-  const [totalPot, setTotalPot] = useState(() => {
-    try { return parseInt(sessionStorage.getItem('lp_pot') ?? '0', 10) || Math.floor(Math.random() * 50000 + 180000); } catch { return 198500; }
-  });
+  const publicClient = usePublicClient();
+  const [tablesPlayed, setTablesPlayed] = useState<number | null>(null);
 
   useEffect(() => {
-    const id = setInterval(() => {
-      setHandsPlayed(n => {
-        const next = n + (Math.random() > 0.6 ? 1 : 0);
-        try { sessionStorage.setItem('lp_hands', String(next)); } catch {}
-        return next;
-      });
-      setTotalPot(n => {
-        const next = n + Math.floor(Math.random() * 40);
-        try { sessionStorage.setItem('lp_pot', String(next)); } catch {}
-        return next;
-      });
-    }, 5000 + Math.random() * 3000);
-    return () => clearInterval(id);
-  }, []);
+    if (!publicClient) return;
+    let cancelled = false;
+    const NEXT_ID_ABI = [
+      { name: 'nextTableId', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+    ] as const;
+    const load = async () => {
+      try {
+        const ids = await Promise.all(
+          [PVP_CONTRACT_ADDRESS, HOLDEM_PVP_CONTRACT_ADDRESS].map(address =>
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            publicClient.readContract({ address, abi: NEXT_ID_ABI, functionName: 'nextTableId' } as any) as Promise<bigint>),
+        );
+        // nextTableId starts at 1 → tables ever created = nextTableId - 1
+        if (!cancelled) setTablesPlayed(ids.reduce((sum, n) => sum + Math.max(0, Number(n) - 1), 0));
+      } catch { /* RPC unavailable — the stat renders as a dash */ }
+    };
+    load();
+    const id = setInterval(load, 30_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [publicClient]);
 
-  return { handsPlayed, totalPot };
+  return { tablesPlayed };
 };
 
 export const LandingPage = () => {
@@ -626,7 +631,7 @@ export const LandingPage = () => {
   const { scrollYProgress } = useScroll({ target: heroRef, offset: ['start start', 'end start'] });
   const heroOpacity = useTransform(scrollYProgress, [0, 0.8], [1, 0]);
   const heroScale = useTransform(scrollYProgress, [0, 0.8], [1, 0.95]);
-  const { handsPlayed, totalPot } = useLiveStats();
+  const { tablesPlayed } = useLiveStats();
 
   return (
     <div
@@ -851,7 +856,7 @@ export const LandingPage = () => {
           <div className="max-w-5xl mx-auto flex flex-col md:flex-row justify-between items-center gap-12 md:gap-4 text-center">
             {[
               { label: 'GAME MODES',          value: <><CountUp to={4} /></> },
-              { label: 'HANDS PLAYED',        value: <motion.span key={handsPlayed} initial={{ y: -4, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="font-clash text-[42px] tracking-tight">{handsPlayed.toLocaleString()}</motion.span> },
+              { label: 'ON-CHAIN TABLES',     value: <motion.span key={tablesPlayed ?? -1} initial={{ y: -4, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="font-clash text-[42px] tracking-tight">{tablesPlayed === null ? '—' : tablesPlayed.toLocaleString()}</motion.span> },
               { label: 'ON-CHAIN ENCRYPTED',  value: <><CountUp to={100} />%</> },
               { label: 'TRUSTED PARTIES',     value: <span style={{ color: 'var(--color-primary)', animation: 'counter-glow 3s ease-in-out infinite' }}>ZERO</span> },
             ].map((s, i) => (

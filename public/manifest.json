@@ -1,0 +1,23 @@
+{
+  "name": "Cofhe Poker",
+  "short_name": "CofhePoker",
+  "description": "Fully on-chain FHE-encrypted poker. Zero trust, zero servers.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#FFE03D",
+  "orientation": "portrait-primary",
+  "categories": ["games", "finance"],
+  "lang": "en",
+  "icons": [
+    { "src": "/logo.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/logo.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ],
+  "screenshots": [
+    { "src": "/logo.png", "sizes": "1280x720", "type": "image/png", "form_factor": "wide" }
+  ],
+  "shortcuts": [
+    { "name": "Play 3-Card",   "url": "/?mode=three-card", "icons": [{ "src": "/logo.png", "sizes": "96x96" }] },
+    { "name": "Play Hold'em",  "url": "/?mode=holdem",     "icons": [{ "src": "/logo.png", "sizes": "96x96" }] }
+  ]
+}

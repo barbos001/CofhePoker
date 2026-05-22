@@ -86,8 +86,23 @@ export const CIPHER_HOLDEM_PVP_ABI = [
     ],
   },
 
+  // View - confidential bankroll buy-in funding
+  {
+    name: 'getStacks', type: 'function', stateMutability: 'view',
+    inputs: [{ name: 'tid', type: 'uint256' }],
+    outputs: [{ name: 'p1Stack', type: 'uint256' }, { name: 'p2Stack', type: 'uint256' }],
+  },
+  {
+    name: 'getFundingStatus', type: 'function', stateMutability: 'view',
+    inputs: [{ name: 'tid', type: 'uint256' }],
+    outputs: [{ name: 'p1Funded', type: 'bool' }, { name: 'p2Funded', type: 'bool' }],
+  },
+  { name: 'isFundingReady', type: 'function', stateMutability: 'view', inputs: [{ name: 'tid', type: 'uint256' }], outputs: [{ name: '', type: 'bool' }] },
+
   // Mutating
   { name: 'createTable', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'buyIn', type: 'uint256' }, { name: 'isPrivate', type: 'bool' }], outputs: [{ name: 'tableId', type: 'uint256' }] },
+  { name: 'confirmFunding', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'tableId', type: 'uint256' }], outputs: [] },
+  { name: 'cashOut', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'tableId', type: 'uint256' }], outputs: [] },
   { name: 'joinTable', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'tableId', type: 'uint256' }], outputs: [] },
   { name: 'joinByInviteCode', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'tableId', type: 'uint256' }, { name: 'code', type: 'bytes32' }], outputs: [] },
   { name: 'leaveTable', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'tableId', type: 'uint256' }], outputs: [] },
