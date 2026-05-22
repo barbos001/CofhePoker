@@ -5,9 +5,9 @@
  * Shows: local session stats, contract addresses, player metrics.
  * Emergency pause: requires manual Hardhat/Etherscan call (contracts may not have Pausable).
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { useAccount } from 'wagmi';
+import { useAccount, usePublicClient } from 'wagmi';
 import { useGameStore } from '@/store/useGameStore';
 import { useProfileStore } from '@/store/useProfileStore';
 import { CONTRACT_ADDRESS } from '@/config/contract';
@@ -15,6 +15,14 @@ import { HOLDEM_CONTRACT_ADDRESS } from '@/config/contractHoldem';
 import { PVP_CONTRACT_ADDRESS } from '@/config/contractPvP';
 import { HOLDEM_PVP_CONTRACT_ADDRESS } from '@/config/contractHoldemPvP';
 import { VAULT_ADDRESS } from '@/config/vault';
+
+// Minimal ABI for live on-chain usage metrics — both PvP contracts expose
+// `nextTableId` (auto-getter; total tables ever = nextTableId - 1) and
+// `getOpenTableCount` (tables currently awaiting an opponent).
+const STATS_ABI = [
+  { name: 'nextTableId',      type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+  { name: 'getOpenTableCount', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+] as const;
 
 const cp = (w: number, s: number | string, sp = '0.03em') => ({
   fontFamily: "'Chakra Petch', sans-serif", fontWeight: w, fontSize: s, letterSpacing: sp,
@@ -67,6 +75,35 @@ export const AdminDashboard = () => {
   const [authenticated, setAuthenticated] = useState(false);
   const [password,      setPassword]      = useState('');
   const [pwError,       setPwError]       = useState(false);
+
+  // Live on-chain activity (real usage evidence — reads the deployed PvP contracts).
+  const publicClient = usePublicClient();
+  const [onChain, setOnChain] = useState<{ pokerTables: number; holdemTables: number; openNow: number } | null>(null);
+
+  useEffect(() => {
+    if (!publicClient) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const read = (addr: string, fn: string) => publicClient.readContract({
+          address: addr as `0x${string}`, abi: STATS_ABI, functionName: fn,
+        } as any) as Promise<bigint>;
+        const [pNext, hNext, pOpen, hOpen] = await Promise.all([
+          read(PVP_CONTRACT_ADDRESS, 'nextTableId'),
+          read(HOLDEM_PVP_CONTRACT_ADDRESS, 'nextTableId'),
+          read(PVP_CONTRACT_ADDRESS, 'getOpenTableCount'),
+          read(HOLDEM_PVP_CONTRACT_ADDRESS, 'getOpenTableCount'),
+        ]);
+        if (!cancelled) setOnChain({
+          pokerTables:  Math.max(0, Number(pNext) - 1),
+          holdemTables: Math.max(0, Number(hNext) - 1),
+          openNow:      Number(pOpen) + Number(hOpen),
+        });
+      } catch { /* RPC unavailable — section shows '…' */ }
+    })();
+    return () => { cancelled = true; };
+  }, [publicClient]);
 
   const handleLogin = () => {
     if (password === ADMIN_PASSWORD) {
@@ -165,6 +202,18 @@ export const AdminDashboard = () => {
             <StatCard label="3-Card"       value={byMode['three-card']} color="#FFE03D" />
             <StatCard label="Hold'em"      value={byMode.holdem} color="#00BFFF" />
             <StatCard label="PvP"          value={byMode.pvp}    color="#B366FF" />
+          </div>
+        </section>
+
+        {/* On-chain activity — real usage evidence */}
+        <section className="mb-8">
+          <h2 style={{ ...cp(600, 12, '0.14em'), color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', marginBottom: 12 }}>
+            On-Chain Activity · Sepolia (live)
+          </h2>
+          <div className="grid grid-cols-3 gap-3">
+            <StatCard label="3-Card PvP Tables"  value={onChain ? onChain.pokerTables : '…'}  color="#FFE03D" sub="created on-chain" />
+            <StatCard label="Hold'em PvP Tables" value={onChain ? onChain.holdemTables : '…'} color="#00BFFF" sub="created on-chain" />
+            <StatCard label="Open Tables Now"    value={onChain ? onChain.openNow : '…'}      color="#B366FF" sub="awaiting players" />
           </div>
         </section>
 
