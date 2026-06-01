@@ -27,3 +27,13 @@ Thumbs.db
 .claude/
 .cursor/
 .aider/
+
+# Internal docs — only README.md ships publicly
+/*.md
+!/README.md
+
+# Test & verification scripts (internal)
+/scripts/test-*
+/scripts/verify-*
+/scripts/bot.*
+/test/

@@ -227,9 +227,9 @@ All live on **Ethereum Sepolia** — click any address for its on-chain transact
 
 ## ✅ Verified On-Chain
 
-Wave 5's confidential-bankroll logic is proven on live Sepolia by **two reproducible scripts** (`scripts/verify-*.mjs`) — judges can re-run them.
+Wave 5's confidential-bankroll logic is proven on live Sepolia by two on-chain verification runs. Their outputs:
 
-**Encrypted buy-in** — `node scripts/verify-funding.mjs`
+**Encrypted buy-in**
 ```
 createPvPTable(buyIn=100)  → status=1
 getStackOf  → 100                   table stack == buy-in                  PASS
@@ -237,7 +237,7 @@ getBalance  → 426947284539845347…   bankroll is an encrypted handle        P
 leaveTable  → stack cashed back into the encrypted bankroll                PASS
 ```
 
-**Full PvP hand, two wallets** — `node scripts/verify-pvp-hand.mjs`
+**Full PvP hand, two wallets**
 ```
 act(call) preflop → act(check) flop → act(fold) flop
 winner paid · stacks p1=50 p2=70 · sum 120 == 2 × buy-in   chips conserved  PASS
@@ -314,8 +314,7 @@ contracts/        6 FHE smart contracts (Solidity)
   CofheHoldemPvP.sol   CofhePokerPvP.sol     ← PvP, encrypted bankroll
   CofheHoldem.sol      CofhePoker.sol        ← vs-Bot
   Vault.sol            MockUSDT.sol
-scripts/          deploy + on-chain verification scripts
-  verify-funding.mjs   verify-pvp-hand.mjs   ← reproducible on-chain proofs
+scripts/          deploy scripts
 src/
   components/     game tables, lobby, spectator, admin, UI
   hooks/          useCofhe, useGameActions, useHoldemActions, usePvPGame, useLobby…
@@ -344,8 +343,6 @@ npm run dev                       # → http://localhost:3000
 # 4. Contracts
 npm run compile                   # compile with Hardhat
 
-# 5. Reproduce the on-chain proof
-node scripts/verify-funding.mjs    # encrypted buy-in, live on Sepolia
 ```
 
 Connect any Sepolia wallet — a new player is granted a starting encrypted bankroll on first interaction. You will sign an EIP-712 **permit** once, so the CoFHE network can decrypt *your* cards for *you*.
