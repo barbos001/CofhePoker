@@ -143,7 +143,7 @@ ebool isFlush = FHE.gte(maxSuit, FHE.asEuint64(5));
 ebool p1Wins = FHE.gt(p1Score, p2Score);
 ```
 
-The losing hand is revealed only at showdown, deliberately, via `FHE.allowPublic`.
+Only the **winner's** hand is `allowPublic`'d at showdown — proof of the winning hand without exposing the loser. The loser's hole cards stay encrypted forever; the loser themselves retains private decrypt access via the deal-time permit. On a fold, **no** hole cards are revealed at all — the folder mucks, the winner does not show.
 
 ### Wave 5 — the confidential bankroll
 
@@ -168,7 +168,7 @@ encBalance[p]  = FHE.sub(encBalance[p], debit);                 // bankroll neve
 |---|---|
 | `FHE.allow(card, player)` | Grants **exactly one** player decrypt rights to their own cards — cross-player access is never granted |
 | `FHE.allowThis(ct)` | Lets the contract itself compute on the ciphertext between transactions |
-| `FHE.allowPublic(ct)` | Called **only** at hand completion to reveal community / losing cards |
+| `FHE.allowPublic(ct)` | Called **only** at hand completion to reveal community cards and the **winner's** hole cards — the loser's hand stays encrypted |
 
 `allowGlobal` is intentionally never used.
 
@@ -190,7 +190,7 @@ A Texas Hold'em PvP hand — and where FHE acts at every step:
 | **2. Deal** | `startHand` generates 9 cards from encrypted randomness; 2 hole cards each are ACL-locked to their owner, 5 community cards stay encrypted | `FHE.randomEuint64`, `FHE.allow` |
 | **3. Bet** | 4 streets (pre-flop → river): check / bet / raise / call / fold / all-in. Community cards are revealed street by street | `FHE.allowPublic` per street |
 | **4. Showdown** | `computeShowdown` evaluates both 7-card hands and compares them — ~700 FHE ops | full `_evalHand7` on ciphertext |
-| **5. Resolve** | The CoFHE threshold network decrypts **one bit** (winner); the pot is paid into the winner's stack; both hands revealed | `FHE.gt` result + `FHE.allowPublic` |
+| **5. Resolve** | The CoFHE threshold network decrypts **one bit** (winner); the pot is paid into the winner's stack; only the **winner's** hand is revealed — the loser's hole cards stay encrypted | `FHE.gt` result + selective `FHE.allowPublic` |
 | **6. Cash out** | `leaveTable` folds your remaining stack back into your **encrypted bankroll** | `FHE.add` |
 
 At no point between deal and showdown is a hole card readable by anyone but its owner.

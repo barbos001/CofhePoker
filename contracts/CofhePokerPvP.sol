@@ -482,22 +482,18 @@ contract CofhePokerPvP {
             t.state  = PvPState.COMPLETE;
             emit PvPHandComplete(tableId, address(0), t.pot);
         } else if (!h.p1Played) {
-            // P1 folded — P2 wins
+            // P1 folded — P2 wins. No card reveal — the folder mucks, the winner does
+            // not show. Each player retains private decrypt access to their OWN hand.
             p2Seat[tableId].stack += t.pot;
             h.winner = t.player2;
             t.state  = PvPState.COMPLETE;
-            // ACL: allowPublic at fold resolution — both hands broadcast so players can review.
-            for (uint i = 0; i < 3; i++) FHE.allowPublic(h.p1Cards[i]);
-            for (uint i = 0; i < 3; i++) FHE.allowPublic(h.p2Cards[i]);
             emit PvPHandComplete(tableId, t.player2, t.pot);
         } else if (!h.p2Played) {
-            // P2 folded — P1 wins
+            // P2 folded — P1 wins. No card reveal — the folder mucks, the winner does
+            // not show. Each player retains private decrypt access to their OWN hand.
             p1Seat[tableId].stack += t.pot;
             h.winner = t.player1;
             t.state  = PvPState.COMPLETE;
-            // ACL: allowPublic at fold resolution — both hands broadcast so players can review.
-            for (uint i = 0; i < 3; i++) FHE.allowPublic(h.p1Cards[i]);
-            for (uint i = 0; i < 3; i++) FHE.allowPublic(h.p2Cards[i]);
             emit PvPHandComplete(tableId, t.player1, t.pot);
         } else {
             // Both played → showdown
@@ -526,10 +522,13 @@ contract CofhePokerPvP {
             h.winner = t.player2;
         }
 
-        // ACL: allowPublic at showdown completion — both hands are now public record.
-        for (uint i = 0; i < 3; i++) {
-            FHE.allowPublic(h.p1Cards[i]);
-            FHE.allowPublic(h.p2Cards[i]);
+        // Reveal ONLY the winner's hand — the loser keeps their cards private.
+        // The FHE.gt comparison already established the winner on ciphertext; the
+        // loser's hand does not need to leave their permit.
+        if (p1Wins) {
+            for (uint i = 0; i < 3; i++) FHE.allowPublic(h.p1Cards[i]);
+        } else {
+            for (uint i = 0; i < 3; i++) FHE.allowPublic(h.p2Cards[i]);
         }
 
         t.state = PvPState.COMPLETE;

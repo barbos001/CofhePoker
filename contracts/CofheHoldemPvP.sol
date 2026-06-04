@@ -655,7 +655,15 @@ contract CofheHoldemPvP {
             h.winner = t.player2;
         }
 
-        _revealAllCards(tableId);
+        // Reveal the community board (no privacy loss — shared cards).
+        for (uint256 i = 0; i < 5; i++) FHE.allowPublic(h.community[i]);
+        // Reveal ONLY the winner's hole cards — the loser's hand stays encrypted.
+        // On tie (h.winner == address(0)), neither hand is revealed publicly.
+        if (h.winner == t.player1) {
+            for (uint256 i = 0; i < 2; i++) FHE.allowPublic(h.p1Cards[i]);
+        } else if (h.winner == t.player2) {
+            for (uint256 i = 0; i < 2; i++) FHE.allowPublic(h.p2Cards[i]);
+        }
         t.state = GS.COMPLETE;
         _unseatBoth(tableId);
         emit HandComplete(tableId, h.winner, t.pot);
@@ -793,7 +801,10 @@ contract CofheHoldemPvP {
         else                     t.p2Stack += t.pot;
         t.state = GS.COMPLETE;
         _unseatBoth(tableId);
-        _revealAllCards(tableId);
+        // No cards revealed on fold — the folder mucks, the winner does not show.
+        // Already-revealed community cards (via _advanceRound on past streets)
+        // remain public via their earlier allowPublic. Each player retains
+        // private decrypt access to their OWN hole cards via the deal-time FHE.allow.
         emit PlayerAction(tableId, msg.sender, "fold");
         emit HandComplete(tableId, winner, t.pot);
     }
@@ -871,15 +882,6 @@ contract CofheHoldemPvP {
                 return;
             }
         }
-    }
-
-    function _revealAllCards(uint256 tableId) internal {
-        Hand storage h = hands[tableId];
-        for (uint256 i = 0; i < 2; i++) {
-            FHE.allowPublic(h.p1Cards[i]);
-            FHE.allowPublic(h.p2Cards[i]);
-        }
-        for (uint256 i = 0; i < 5; i++) FHE.allowPublic(h.community[i]);
     }
 
     function _min(uint256 a, uint256 b) internal pure returns (uint256) { return a < b ? a : b; }
